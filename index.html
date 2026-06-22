@@ -502,6 +502,7 @@ class Fish {
     this.dead = false;
   }
   update(dt) {
+    if (fishFreeze > 0) { this.phase += dt * 0.6; return; }   // frozen in place by loempia
     const v = sharkPanic ? this.vx * 3.2 : this.vx;  // flee fast when a shark is near
     this.x += v * dt;                                // HORIZONTAL ONLY, fixed lane
     this.phase += dt * (4 + Math.abs(v) * 0.03);
@@ -514,6 +515,10 @@ class Fish {
     const wag = Math.sin(this.phase) * 0.5;
     c.save(); c.translate(this.x, this.y); c.scale(dir, 1);
     drawRival(c, this.r, wag, this.p);
+    if (fishFreeze > 0) {                              // icy sheen while frozen
+      c.globalAlpha = 0.38; c.beginPath(); c.arc(0,0,this.r*1.06,0,TAU);
+      c.fillStyle="#bfe8ff"; c.fill(); c.globalAlpha=1;
+    }
     c.restore();
   }
 }
@@ -694,17 +699,14 @@ class Particle {
 // =====================================================================
 //  Power-ups  — floating collectibles (image sprites with a glow)
 //    babi    → SMULMODUS: eet 7s lang ALLE vissen (ook grotere)
-//    joint   → SLOOM: 6s lang traag + wazig zwemmen
-//    loempia → BEVROREN: 2s lang niet kunnen bewegen
+//    loempia → bevriest 3s lang alle ANDERE vissen (Herwinny niet)
 // =====================================================================
-const PU_IMG = { babi:new Image(), joint:new Image(), loempia:new Image() };
+const PU_IMG = { babi:new Image(), loempia:new Image() };
 PU_IMG.babi.src    = "babi.png";
-PU_IMG.joint.src   = "joint.png";
 PU_IMG.loempia.src = "loempia.png";
 const PU_TYPES = [
-  { key:"babi",    glow:"#ffcf5a", weight:1.0 },   // good — rarer
-  { key:"joint",   glow:"#9be36b", weight:1.3 },   // trap
-  { key:"loempia", glow:"#5fd0ff", weight:1.3 },   // trap
+  { key:"babi",    glow:"#ffcf5a", weight:1.0 },   // SMULMODUS: eet alles
+  { key:"loempia", glow:"#5fd0ff", weight:1.2 },   // bevriest alle andere vissen
 ];
 function pickPU(){
   const tot=PU_TYPES.reduce((s,t)=>s+t.weight,0); let r=Math.random()*tot;
@@ -819,9 +821,9 @@ let state="start";
 let iosBlocked=false;                    // true on iPhone/iPad in Safari (not installed)
 let fishes=[]; let powerups=[]; const bubbles=[]; const particles=[];
 const player=new Player();
-let spawnTimer=0, elapsed=0, puTimer=6, prevFeast=0;
-// shark event state
-let shark=null, sharkTimer=rand(16,26), sharkWarn=0, sharkPanic=false, shake=0;
+let spawnTimer=0, elapsed=0, puTimer=6, prevFeast=0, fishFreeze=0;
+// shark event state — shark arrives roughly once a minute
+let shark=null, sharkTimer=rand(45,60), sharkWarn=0, sharkPanic=false, shake=0;
 for(let i=0;i<26;i++) bubbles.push(new Bubble());
 
 // =====================================================================
@@ -906,8 +908,8 @@ function startGame(){
   if(iosBlocked) return;                 // can't play in iOS browser — install first
   ensureAudio();                         // unlock + start music on this tap
   player.reset();
-  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; prevFeast=0;
-  shark=null; sharkTimer=rand(16,26); sharkWarn=0; sharkPanic=false; shake=0;
+  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; prevFeast=0; fishFreeze=0;
+  shark=null; sharkTimer=rand(45,60); sharkWarn=0; sharkPanic=false; shake=0;
   for(let i=0;i<6;i++){                                  // start with small, edible fish only
     const rr=rand(12,player.r*0.85), fl=Math.random()<0.5;
     fishes.push(new Fish(rr, rand(0,W), laneY(), rand(50,110)*(fl?1:-1), pick(RIVALS)));
@@ -934,12 +936,9 @@ function applyPU(key){
   if(key==="babi"){
     player.feast=7; burst(player.x,player.y,"#ffcf5a",22); sfx("eat");
     showPU("🍖 SMULMODUS! Eet alles!", "#ffd36b");
-  } else if(key==="joint"){
-    player.slow=6; burst(player.x,player.y,"#9be36b",22); sfx("hit");
-    showPU("🌿 Sloom... je zwemt traag", "#9be36b");
   } else if(key==="loempia"){
-    player.frozen=2; burst(player.x,player.y,"#5fd0ff",22); sfx("hit");
-    showPU("🧊 Bevroren! Even niet bewegen", "#7fd8ff");
+    fishFreeze=3; burst(player.x,player.y,"#5fd0ff",22); sfx("eat");
+    showPU("🧊 Vissen bevroren! Smikkelen maar", "#7fd8ff");
   }
 }
 function handlePowerups(){
@@ -1042,6 +1041,7 @@ function loop(now){
 
   if(state==="play"){
     elapsed+=dt;
+    if(fishFreeze>0) fishFreeze-=dt;                   // loempia freeze countdown
 
     // ---------- shark event ----------
     if(!shark && sharkWarn<=0){
@@ -1097,8 +1097,8 @@ function loop(now){
     if(shark) shark.draw(ctx);
     player.draw(ctx);
 
-    // shark gone (eaten or swam off) → reset, schedule next
-    if(shark && shark.dead){ shark=null; sharkPanic=false; sharkTimer=rand(20,32); }
+    // shark gone (eaten or swam off) → reset, schedule next (~1/min)
+    if(shark && shark.dead){ shark=null; sharkPanic=false; sharkTimer=rand(50,65); }
   } else {
     shake=0;
     if(fishes.length<6 && Math.random()<0.02){
@@ -1117,12 +1117,9 @@ function loop(now){
 
   // full-screen tints (untransformed so they never gap)
   if(state==="play"){
-    if(player.frozen>0){
-      const a=player.frozen<1.5 && Math.floor(player.frozen*8)%2===0 ? 0.12 : 0.24;
+    if(fishFreeze>0){                                  // icy tint while other fish are frozen
+      const a=fishFreeze<1.5 && Math.floor(fishFreeze*8)%2===0 ? 0.10 : 0.20;
       ctx.fillStyle="rgba(120,200,255,"+a+")"; ctx.fillRect(0,0,W,H);
-    } else if(player.slow>0){
-      const a=player.slow<1.5 && Math.floor(player.slow*8)%2===0 ? 0.08 : 0.16;
-      ctx.fillStyle="rgba(120,225,120,"+a+")"; ctx.fillRect(0,0,W,H);
     }
     if(sharkWarn>0){                                   // pulsing red danger flash
       const a=0.08+0.12*Math.abs(Math.sin(animTime*12));
