@@ -658,50 +658,31 @@ for(let i=0;i<26;i++) bubbles.push(new Bubble());
 //  Audio — generative background music + sound effects (Web Audio API)
 //  No files needed. Starts on the first tap (required by iOS).
 // =====================================================================
-let actx=null, master=null, musicGain=null, sfxGain=null, musicLP=null;
+let actx=null, master=null, sfxGain=null;
+let music=null;                              // looping background music (Herwinny.mp3)
 let muted = localStorage.getItem("fishyMuted")==="1";
-let schedTimer=null, step16=0, nextNoteT=0;
+const MUSIC_VOL = 0.6;
 const midi2f = m => 440*Math.pow(2,(m-69)/12);
-const PROG = [[60,64,67],[55,59,67],[57,60,64],[53,57,60]]; // C  G  Am  F
-const tempo=92, eighth=(60/tempo)/2;
 
 function ensureAudio(){
-  if(actx) { if(actx.state==="suspended") actx.resume(); return; }
+  // --- looping background music via HTMLAudioElement ---
+  if(!music){
+    music = new Audio("Herwinny.mp3");
+    music.loop = true;                       // restart automatically when it ends
+    music.preload = "auto";
+    music.volume = muted ? 0 : MUSIC_VOL;
+  }
+  if(!muted){ const p = music.play(); if(p && p.catch) p.catch(()=>{}); }
+
+  // --- Web Audio context for sound effects ---
+  if(actx){ if(actx.state==="suspended") actx.resume(); return; }
   const AC = window.AudioContext||window.webkitAudioContext;
   if(!AC) return;
   actx = new AC();
   master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
-  musicLP = actx.createBiquadFilter(); musicLP.type="lowpass"; musicLP.frequency.value=1600;
-  musicGain = actx.createGain(); musicGain.gain.value = muted?0:0.32;
-  musicLP.connect(musicGain); musicGain.connect(master);
   sfxGain = actx.createGain(); sfxGain.gain.value = muted?0:0.7; sfxGain.connect(master);
   // silent-buffer unlock for iOS
   const b=actx.createBuffer(1,1,22050), s=actx.createBufferSource(); s.buffer=b; s.connect(actx.destination); s.start(0);
-  nextNoteT = actx.currentTime + 0.1;
-  schedTimer = setInterval(scheduler, 25);
-}
-function tone(time,freq,dur,type,gain,dest){
-  const o=actx.createOscillator(), g=actx.createGain();
-  o.type=type; o.frequency.value=freq;
-  g.gain.setValueAtTime(0.0001,time);
-  g.gain.linearRampToValueAtTime(gain,time+0.02);
-  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
-  o.connect(g); g.connect(dest||musicLP);
-  o.start(time); o.stop(time+dur+0.05);
-}
-function scheduler(){
-  if(!actx) return;
-  while(nextNoteT < actx.currentTime + 0.13){
-    const chord = PROG[Math.floor(step16/8)%PROG.length];
-    if(step16%8===0){                                   // pad + bass at each chord
-      chord.forEach(m=>tone(nextNoteT, midi2f(m), eighth*8, "sine", 0.05));
-      tone(nextNoteT, midi2f(chord[0]-24), eighth*8, "triangle", 0.06);
-    }
-    const arpPat=[0,1,2,1,2,1,0,2];                      // gentle arpeggio
-    const m = chord[arpPat[step16%8]%chord.length]+12;
-    tone(nextNoteT, midi2f(m), eighth*0.9, "triangle", 0.10);
-    nextNoteT += eighth; step16++;
-  }
 }
 function sfx(type){
   if(!actx) return;
@@ -724,7 +705,8 @@ function sfx(type){
 }
 function setMuted(m){
   muted=m; localStorage.setItem("fishyMuted", m?"1":"0");
-  if(actx){ musicGain.gain.value=m?0:0.32; sfxGain.gain.value=m?0:0.7; }
+  if(music){ music.volume = m?0:MUSIC_VOL; if(m) music.pause(); else { const p=music.play(); if(p&&p.catch) p.catch(()=>{}); } }
+  if(actx){ sfxGain.gain.value=m?0:0.7; }
   const mb=document.getElementById("muteBtn");
   if(mb) mb.innerHTML = m ? ICON_MUTE : ICON_SOUND;
 }
