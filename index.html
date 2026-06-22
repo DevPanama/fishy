@@ -47,14 +47,18 @@
 
   /* power-up banner */
   #puMsg {
-    position: absolute; top: 72px; left: 0; right: 0; text-align: center;
+    position: absolute; top: 64px; left: 50%;
     font-size: 26px; font-weight: 800; letter-spacing: .5px;
-    color: #fff; pointer-events: none; z-index: 8;
-    opacity: 0; transform: translateY(-8px) scale(.9);
-    transition: opacity .25s ease, transform .25s ease;
-    text-shadow: 0 0 14px currentColor, 0 2px 4px rgba(0,0,0,.4);
+    pointer-events: none; z-index: 8; white-space: nowrap;
+    padding: 10px 26px; border-radius: 40px;
+    background: rgba(6, 26, 40, .82);
+    border: 2px solid rgba(255,255,255,.28);
+    box-shadow: 0 6px 20px rgba(0,0,0,.45), 0 0 22px currentColor;
+    text-shadow: 0 2px 3px rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.7);
+    opacity: 0; transform: translateX(-50%) translateY(-8px) scale(.9);
+    transition: opacity .22s ease, transform .22s ease;
   }
-  #puMsg.show { opacity: 1; transform: translateY(0) scale(1); }
+  #puMsg.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 
   /* top-right buttons (sound + fullscreen) */
   #fsBtn, #muteBtn {
@@ -498,8 +502,9 @@ class Fish {
     this.dead = false;
   }
   update(dt) {
-    this.x += this.vx * dt;                          // HORIZONTAL ONLY, fixed lane
-    this.phase += dt * (4 + Math.abs(this.vx) * 0.03);
+    const v = sharkPanic ? this.vx * 3.2 : this.vx;  // flee fast when a shark is near
+    this.x += v * dt;                                // HORIZONTAL ONLY, fixed lane
+    this.phase += dt * (4 + Math.abs(v) * 0.03);
     const m = this.r + 80;
     if (this.vx > 0 && this.x - m > W) this.dead = true;
     if (this.vx < 0 && this.x + m < 0) this.dead = true;
@@ -509,6 +514,77 @@ class Fish {
     const wag = Math.sin(this.phase) * 0.5;
     c.save(); c.translate(this.x, this.y); c.scale(dir, 1);
     drawRival(c, this.r, wag, this.p);
+    c.restore();
+  }
+}
+
+// ---- Shark: a giant menace. Always lethal — unless SMULMODUS is active. ----
+function drawShark(c, r, wag){
+  // r ≈ half body length; faces +x. Sleek grey predator with white belly.
+  const L=r, Hh=r*0.5;
+  c.save();
+  c.rotate(wag*0.12);
+  // tail
+  c.beginPath();
+  c.moveTo(-L*0.78,0);
+  c.lineTo(-L*1.02,-Hh*0.95);
+  c.lineTo(-L*0.74,-Hh*0.12);
+  c.lineTo(-L*1.0, Hh*0.75);
+  c.closePath();
+  c.fillStyle="#5b6b76"; c.fill();
+  // body
+  c.beginPath();
+  c.moveTo(L*0.98,0);
+  c.quadraticCurveTo(L*0.55,-Hh*0.92,-L*0.1,-Hh*0.78);
+  c.quadraticCurveTo(-L*0.6,-Hh*0.6,-L*0.78,0);
+  c.quadraticCurveTo(-L*0.6,Hh*0.6,-L*0.1,Hh*0.78);
+  c.quadraticCurveTo(L*0.55,Hh*0.92,L*0.98,0);
+  c.closePath();
+  const bg=c.createLinearGradient(0,-Hh,0,Hh);
+  bg.addColorStop(0,"#7c8c97"); bg.addColorStop(.55,"#64737e"); bg.addColorStop(.56,"#e9eef1"); bg.addColorStop(1,"#cfd8dd");
+  c.fillStyle=bg; c.fill();
+  // dorsal fin
+  c.beginPath(); c.moveTo(L*0.12,-Hh*0.7);
+  c.quadraticCurveTo(L*0.02,-Hh*1.7,-L*0.32,-Hh*0.62); c.closePath();
+  c.fillStyle="#566570"; c.fill();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.34,Hh*0.32);
+  c.quadraticCurveTo(L*0.18,Hh*1.15,L*0.5,Hh*0.6); c.closePath();
+  c.fillStyle="#566570"; c.fill();
+  // gills
+  c.strokeStyle="rgba(0,0,0,.18)"; c.lineWidth=Math.max(1,r*0.03);
+  for(let i=0;i<3;i++){ c.beginPath(); c.arc(L*0.5-i*r*0.08,0,Hh*0.55,-0.9,0.9); c.stroke(); }
+  // mouth with teeth
+  c.beginPath(); c.moveTo(L*0.98,Hh*0.06); c.quadraticCurveTo(L*0.7,Hh*0.34,L*0.45,Hh*0.26);
+  c.lineWidth=Math.max(1,r*0.04); c.strokeStyle="rgba(0,0,0,.5)"; c.stroke();
+  c.fillStyle="#fff";
+  for(let i=0;i<5;i++){ const tx=L*0.5+i*L*0.1; c.beginPath();
+    c.moveTo(tx,Hh*0.28); c.lineTo(tx+L*0.04,Hh*0.13); c.lineTo(tx+L*0.08,Hh*0.28); c.closePath(); c.fill(); }
+  // eye
+  c.beginPath(); c.arc(L*0.62,-Hh*0.22,r*0.07,0,TAU); c.fillStyle="#11202a"; c.fill();
+  c.beginPath(); c.arc(L*0.64,-Hh*0.25,r*0.025,0,TAU); c.fillStyle="#fff"; c.fill();
+  c.restore();
+}
+class Shark {
+  constructor(){
+    this.fromLeft = Math.random()<0.5;
+    this.r = clamp(Math.min(W,H)*0.30, 120, 320);    // huge
+    this.x = this.fromLeft ? -this.r*1.6 : W+this.r*1.6;
+    this.y = clamp(rand(this.r*0.6, H-BAR_H-this.r*0.6), this.r*0.6, H-this.r*0.6);
+    this.vx = (this.fromLeft?1:-1)*rand(170,220);     // fast
+    this.phase=0; this.dead=false;
+  }
+  update(dt){
+    this.x += this.vx*dt; this.phase += dt*7;
+    const m=this.r*1.8;
+    if(this.vx>0 && this.x-m>W) this.dead=true;
+    if(this.vx<0 && this.x+m<0) this.dead=true;
+  }
+  draw(c){
+    const dir=this.vx>=0?1:-1;
+    c.save(); c.translate(this.x,this.y); c.scale(dir,1);
+    c.shadowColor="rgba(0,0,0,.35)"; c.shadowBlur=20;
+    drawShark(c,this.r,Math.sin(this.phase));
     c.restore();
   }
 }
@@ -534,7 +610,7 @@ class Player {
   reset() {
     this.r = 20; this.x = W*0.5; this.y = H*0.5;
     this.vx = 0; this.vy = 0; this.phase = 0; this.facing = 1;
-    this.inv = 0; this.score = 0; this.lives = 3;
+    this.inv = 0; this.score = 0; this.lives = 1;
     this.feast = 0; this.slow = 0; this.frozen = 0;     // power-up effect timers
   }
   update(dt) {
@@ -574,13 +650,14 @@ class Player {
   draw(c) {
     if (this.inv>0 && Math.floor(this.inv*12)%2===0) return;
     // power-up aura (drawn behind the sprite, in unscaled space)
-    const aura = this.feast>0 ? "#ffcf5a" : this.frozen>0 ? "#5fd0ff" : this.slow>0 ? "#9be36b" : null;
+    const aura = this.feast>0 ? "#ff2e2e" : this.frozen>0 ? "#5fd0ff" : this.slow>0 ? "#9be36b" : null;
     if (aura) {
       const fade = this.feast>0 ? this.feast : this.frozen>0 ? this.frozen : this.slow;
       const blink = fade<1.5 && Math.floor(fade*8)%2===0 ? 0.35 : 1;   // blink when running out
-      const pr = this.r*1.5 + Math.sin(animTime*6)*this.r*0.12;
-      c.save(); c.globalAlpha=0.55*blink;
-      const rg=c.createRadialGradient(this.x,this.y,this.r*0.5,this.x,this.y,pr);
+      const big = this.feast>0 ? 1.85 : 1.5;                            // feast glow is bigger
+      const pr = this.r*big + Math.sin(animTime*6)*this.r*0.14;
+      c.save(); c.globalAlpha=(this.feast>0?0.7:0.55)*blink;
+      const rg=c.createRadialGradient(this.x,this.y,this.r*0.4,this.x,this.y,pr);
       rg.addColorStop(0,aura); rg.addColorStop(1,"rgba(0,0,0,0)");
       c.fillStyle=rg; c.beginPath(); c.arc(this.x,this.y,pr,0,TAU); c.fill();
       c.restore();
@@ -742,7 +819,9 @@ let state="start";
 let iosBlocked=false;                    // true on iPhone/iPad in Safari (not installed)
 let fishes=[]; let powerups=[]; const bubbles=[]; const particles=[];
 const player=new Player();
-let spawnTimer=0, elapsed=0, puTimer=6;
+let spawnTimer=0, elapsed=0, puTimer=6, prevFeast=0;
+// shark event state
+let shark=null, sharkTimer=rand(16,26), sharkWarn=0, sharkPanic=false, shake=0;
 for(let i=0;i<26;i++) bubbles.push(new Bubble());
 
 // =====================================================================
@@ -811,9 +890,9 @@ function spawnFish(){
   // how many threats are already on screen — keeps it from piling up
   const bigOnScreen = fishes.filter(f => f.r > player.r*1.05).length;
   let rr, roll=Math.random(), big=false;
-  if(roll < 0.68 - t*0.10)       rr=rand(player.r*0.35, player.r*0.85);  // edible (more common)
-  else if(roll < 0.90)           rr=rand(player.r*0.92, player.r*1.25);  // risky / slightly bigger
-  else { rr=rand(player.r*1.4, player.r*2.1); big=true; }                // dangerous (rarer, smaller)
+  if(roll < 0.62 - t*0.08)       rr=rand(player.r*0.35, player.r*0.85);  // edible (most common)
+  else if(roll < 0.86)           rr=rand(player.r*0.92, player.r*1.3);   // risky / slightly bigger
+  else { rr=rand(player.r*1.45, player.r*2.2); big=true; }               // dangerous bigger fish (~14%)
   // don't let too many big fish be around at once
   if(big && bigOnScreen >= 2){ rr=rand(player.r*0.5, player.r*0.85); big=false; }
   rr=clamp(rr, 10, Math.min(W,H)*0.4);
@@ -827,8 +906,12 @@ function startGame(){
   if(iosBlocked) return;                 // can't play in iOS browser — install first
   ensureAudio();                         // unlock + start music on this tap
   player.reset();
-  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6;
-  for(let i=0;i<6;i++){ spawnFish(); fishes[i].x=rand(0,W); }
+  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; prevFeast=0;
+  shark=null; sharkTimer=rand(16,26); sharkWarn=0; sharkPanic=false; shake=0;
+  for(let i=0;i<6;i++){                                  // start with small, edible fish only
+    const rr=rand(12,player.r*0.85), fl=Math.random()<0.5;
+    fishes.push(new Fish(rr, rand(0,W), laneY(), rand(50,110)*(fl?1:-1), pick(RIVALS)));
+  }
   state="play";
   startScreen.classList.add("hidden");
   overScreen.classList.add("hidden");
@@ -876,11 +959,10 @@ function handleEating(){
         f.dead=true; player.score += Math.max(1,Math.round(f.r));
         player.r = Math.min(player.r + f.r*0.05, Math.min(W,H)*0.4);
         burst(f.x,f.y, f.p.mid, 10); sfx("eat"); updateHUD();
-      } else if(player.inv<=0){
-        player.lives--; player.inv=2.2;
-        burst(player.x,player.y,"#ffd36b",16); sfx("hit");
-        player.r=Math.max(20, player.r*0.85); updateHUD();
-        if(player.lives<=0) gameOver("Je werd opgegeten door een grotere vis!");
+      } else {                                          // hit by a bigger fish → instant game over
+        burst(player.x,player.y,"#ff5a5a",20); sfx("hit");
+        gameOver("Je werd opgegeten door een grotere vis!");
+        return;
       }
     }
   }
@@ -945,32 +1027,80 @@ muteBtn.addEventListener("click", () => { ensureAudio(); setMuted(!muted); });
 //  Main loop
 // =====================================================================
 let last=performance.now();
+const SHK=11;                                        // max screen-shake overscan
 function loop(now){
   let dt=(now-last)/1000; last=now; dt=Math.min(dt,0.05);
   animTime += dt;                                    // drive the looping fish animation
+
+  // screen-shake offset (shark warning / shark present)
+  let ox=0, oy=0;
+  if(shake>0.4){ ox=rand(-shake,shake); oy=rand(-shake,shake); }
+  ctx.save(); ctx.translate(ox,oy);
+  ctx.fillStyle="#1f80b0"; ctx.fillRect(-SHK,-SHK,W+SHK*2,H+SHK*2);   // overscan so shake never gaps
   drawBackground(now);
   for(const b of bubbles){ b.update(dt); b.draw(ctx); }
 
   if(state==="play"){
-    elapsed+=dt; spawnTimer-=dt;
-    const interval=clamp(1.25-elapsed*0.004,0.7,1.25);
-    if(spawnTimer<=0 && fishes.length<11){
-      const big=spawnFish();
-      spawnTimer=interval + (big ? 1.0 : 0);          // breather after a big fish
+    elapsed+=dt;
+
+    // ---------- shark event ----------
+    if(!shark && sharkWarn<=0){
+      sharkTimer-=dt;
+      if(sharkTimer<=0){ sharkWarn=2.6; sharkPanic=true; sfx("hit"); showPU("⚠️ HAAI! ZWEM WEG!","#ff6b6b"); }
+    } else if(sharkWarn>0 && !shark){
+      sharkWarn-=dt;
+      if(sharkWarn<=0) shark=new Shark();
     }
-    // power-up spawning
-    puTimer-=dt;
-    if(puTimer<=0){ powerups.push(new PowerUp()); puTimer=rand(7,12); }
+    const targetShake = sharkWarn>0 ? lerp(3,12,1-clamp(sharkWarn/2.6,0,1)) : (shark?6:0);
+    shake = lerp(shake, targetShake, 0.18);
+    const eventActive = sharkPanic || shark;
+
+    if(!eventActive){                                 // pause new spawns during the shark event
+      spawnTimer-=dt;
+      const interval=clamp(1.25-elapsed*0.004,0.7,1.25);
+      if(spawnTimer<=0 && fishes.length<11){ const big=spawnFish(); spawnTimer=interval+(big?1.0:0); }
+      puTimer-=dt;
+      if(puTimer<=0){ powerups.push(new PowerUp()); puTimer=rand(7,12); }
+    }
+
     for(const pu of powerups) pu.update(dt);
     for(const f of fishes) f.update(dt);
     player.update(dt); handleEating(); handlePowerups();
+
+    // announce when SMULMODUS ends
+    if(prevFeast>0 && player.feast<=0) showPU("🍖 Smulmodus voorbij!","#ffd36b");
+    prevFeast=player.feast;
+
+    if(shark){
+      shark.update(dt);
+      if(!shark.dead){
+        const dx=shark.x-player.x, dy=shark.y-player.y;
+        if(Math.hypot(dx,dy) < player.r + shark.r*0.6){
+          if(player.feast>0){                          // babi pangang active → eat the shark!
+            shark.dead=true; player.score+=100;
+            player.r=Math.min(player.r*1.18, Math.min(W,H)*0.4);
+            burst(player.x,player.y,"#ff2e2e",38); sfx("eat");
+            showPU("🦈 HAP! Haai verslonden! +100","#ffd36b"); updateHUD();
+          } else {
+            burst(player.x,player.y,"#ff2e2e",26); sfx("hit");
+            gameOver("Opgegeten door de HAAI! 🦈");
+          }
+        }
+      }
+    }
+
     fishes=fishes.filter(f=>!f.dead);
     powerups=powerups.filter(p=>!p.dead);
     fishes.sort((a,b)=>a.r-b.r);
     for(const f of fishes) f.draw(ctx);
     for(const pu of powerups) pu.draw(ctx);
+    if(shark) shark.draw(ctx);
     player.draw(ctx);
+
+    // shark gone (eaten or swam off) → reset, schedule next
+    if(shark && shark.dead){ shark=null; sharkPanic=false; sharkTimer=rand(20,32); }
   } else {
+    shake=0;
     if(fishes.length<6 && Math.random()<0.02){
       const rr=rand(16,42), fl=Math.random()<0.5;
       fishes.push(new Fish(rr, fl?-50:W+50, laneY(), rand(45,100)*(fl?1:-1), pick(RIVALS)));
@@ -983,7 +1113,9 @@ function loop(now){
   for(const p of particles){ p.update(dt); p.draw(ctx); }
   for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
 
-  // screen tint for active debuffs (cheap canvas overlay — no CSS blur = no lag)
+  ctx.restore();                                      // end shake transform
+
+  // full-screen tints (untransformed so they never gap)
   if(state==="play"){
     if(player.frozen>0){
       const a=player.frozen<1.5 && Math.floor(player.frozen*8)%2===0 ? 0.12 : 0.24;
@@ -991,6 +1123,10 @@ function loop(now){
     } else if(player.slow>0){
       const a=player.slow<1.5 && Math.floor(player.slow*8)%2===0 ? 0.08 : 0.16;
       ctx.fillStyle="rgba(120,225,120,"+a+")"; ctx.fillRect(0,0,W,H);
+    }
+    if(sharkWarn>0){                                   // pulsing red danger flash
+      const a=0.08+0.12*Math.abs(Math.sin(animTime*12));
+      ctx.fillStyle="rgba(255,40,40,"+a+")"; ctx.fillRect(0,0,W,H);
     }
   }
 
