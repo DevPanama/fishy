@@ -4,3 +4,6 @@ node_modules/
 # build artifacts / source media (not needed to run the game)
 cutout
 cutout_batch
+
+# editing originals (not needed to run)
+_orig/

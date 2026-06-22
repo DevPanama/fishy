@@ -637,17 +637,18 @@ class PowerUp {
   constructor(){
     this.type=pickPU();
     const fromLeft=Math.random()<0.5;
-    this.r=34;                                       // collision radius (visual is wider)
-    this.x=fromLeft?-70:W+70;
-    this.baseY=rand(80, H-BAR_H-80);
+    this.size=clamp(Math.min(W,H)*0.26, 130, 230);   // big, clearly visible
+    this.r=this.size*0.42;                            // collision radius (generous)
+    this.x=fromLeft?-this.size:W+this.size;
+    this.baseY=rand(this.size*0.6, H-BAR_H-this.size*0.6);
     this.y=this.baseY;
-    this.vx=rand(55,95)*(fromLeft?1:-1);
+    this.vx=rand(50,85)*(fromLeft?1:-1);
     this.phase=rand(0,TAU); this.t=0; this.dead=false;
   }
   update(dt){
     this.t+=dt; this.x+=this.vx*dt; this.phase+=dt*2;
     this.y=this.baseY+Math.sin(this.phase)*12;       // gentle bob
-    const m=this.r+110;
+    const m=this.size+40;
     if(this.vx>0 && this.x-m>W) this.dead=true;
     if(this.vx<0 && this.x+m<0) this.dead=true;
   }
@@ -655,9 +656,11 @@ class PowerUp {
     const img=PU_IMG[this.type.key];
     const pulse=0.6+Math.sin(this.t*4)*0.4;
     c.save(); c.translate(this.x,this.y);
-    c.shadowColor=this.type.glow; c.shadowBlur=24+pulse*18;
+    c.scale(1+Math.sin(this.t*3)*0.04, 1+Math.sin(this.t*3)*0.04);   // subtle breathing
+    c.shadowColor=this.type.glow; c.shadowBlur=22+pulse*16;
     if(img && img.complete && img.naturalWidth){
-      const iw=this.r*2.7, ih=iw*(img.naturalHeight/img.naturalWidth);
+      const ar=img.naturalWidth/img.naturalHeight;
+      let iw,ih; if(ar>=1){ iw=this.size; ih=this.size/ar; } else { ih=this.size; iw=this.size*ar; }
       c.drawImage(img,-iw*0.5,-ih*0.5,iw,ih);
     } else {
       c.beginPath(); c.arc(0,0,this.r,0,TAU); c.fillStyle=this.type.glow; c.fill();
@@ -980,20 +983,22 @@ function loop(now){
   for(const p of particles){ p.update(dt); p.draw(ctx); }
   for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
 
-  // screen tint for active debuffs (cheap CSS filter on the canvas)
-  let filt="";
+  // screen tint for active debuffs (cheap canvas overlay — no CSS blur = no lag)
   if(state==="play"){
-    if(player.frozen>0)    filt="saturate(.8) brightness(1.12) hue-rotate(160deg) blur(.6px)";
-    else if(player.slow>0) filt="saturate(1.35) hue-rotate(38deg) blur(1.3px)";
+    if(player.frozen>0){
+      const a=player.frozen<1.5 && Math.floor(player.frozen*8)%2===0 ? 0.12 : 0.24;
+      ctx.fillStyle="rgba(120,200,255,"+a+")"; ctx.fillRect(0,0,W,H);
+    } else if(player.slow>0){
+      const a=player.slow<1.5 && Math.floor(player.slow*8)%2===0 ? 0.08 : 0.16;
+      ctx.fillStyle="rgba(120,225,120,"+a+")"; ctx.fillRect(0,0,W,H);
+    }
   }
-  if(filt!==curFilter){ canvas.style.filter=filt; curFilter=filt; }
 
   // fade out the power-up banner
   if(puMsgTimer>0){ puMsgTimer-=dt; if(puMsgTimer<=0) puMsgEl.classList.remove("show"); }
 
   requestAnimationFrame(loop);
 }
-let curFilter="";
 
 resize();
 updateHUD();
