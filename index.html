@@ -45,6 +45,17 @@
   }
   #lives svg { width: 34px; height: 16px; }
 
+  /* power-up banner */
+  #puMsg {
+    position: absolute; top: 72px; left: 0; right: 0; text-align: center;
+    font-size: 26px; font-weight: 800; letter-spacing: .5px;
+    color: #fff; pointer-events: none; z-index: 8;
+    opacity: 0; transform: translateY(-8px) scale(.9);
+    transition: opacity .25s ease, transform .25s ease;
+    text-shadow: 0 0 14px currentColor, 0 2px 4px rgba(0,0,0,.4);
+  }
+  #puMsg.show { opacity: 1; transform: translateY(0) scale(1); }
+
   /* top-right buttons (sound + fullscreen) */
   #fsBtn, #muteBtn {
     position: absolute; top: 12px; z-index: 7;
@@ -119,6 +130,7 @@
 
   <div id="score">0</div>
   <div id="lives"></div>
+  <div id="puMsg"></div>
 
   <!-- sound toggle (top-right) -->
   <button id="muteBtn" title="Geluid aan/uit"></button>
@@ -175,10 +187,11 @@
       <h1>HERWINY</h1>
       <div class="tag">Eet of word gegeten</div>
       <div class="rules">
-        🐟 <b>Sleep met je vinger</b> (of <b>pijltjestoetsen</b> op pc)<br>
-        🟢 Eet vissen die <b>kleiner</b> zijn dan jij<br>
-        🔴 Ontwijk vissen die <b>groter</b> zijn<br>
-        ⭐ Hoe meer je eet, hoe groter je wordt
+        🐠 Jij bent <b>Herwinny</b> en zwemt door de zee op zoek naar eten.<br><br>
+        🟢 Herwinny kan alleen visjes eten die <b>kleiner</b> zijn dan hijzelf.<br>
+        🔴 Pas op voor <b>grotere</b> vissen — die eten jou op!<br>
+        ⭐ Hoe meer je eet, hoe <b>groter</b> Herwinny wordt.<br><br>
+        🐟 <b>Sleep met je vinger</b> (of gebruik de <b>pijltjestoetsen</b> op de pc).
       </div>
       <button class="btn" id="startBtn">Start spel</button>
       <div class="small">Klik of druk op spatie</div>
@@ -522,14 +535,26 @@ class Player {
     this.r = 20; this.x = W*0.5; this.y = H*0.5;
     this.vx = 0; this.vy = 0; this.phase = 0; this.facing = 1;
     this.inv = 0; this.score = 0; this.lives = 3;
+    this.feast = 0; this.slow = 0; this.frozen = 0;     // power-up effect timers
   }
   update(dt) {
-    const speed = 300 + this.r * 1.4;
-    if (ptr.active) {                                   // finger-drag (mobile)
+    if (this.feast>0)  this.feast-=dt;
+    if (this.slow>0)   this.slow-=dt;
+    if (this.frozen>0) this.frozen-=dt;
+    if (this.inv>0)    this.inv-=dt;
+
+    let speed = 300 + this.r * 1.4;
+    if (this.slow>0) speed *= 0.42;                     // stoned → slow
+    const resp = this.slow>0 ? 0.06 : 0.16;            // sluggish, delayed controls
+    const respK = this.slow>0 ? 0.07 : 0.18;
+
+    if (this.frozen>0) {                                // frozen → can't move at all
+      this.vx=lerp(this.vx,0,0.3); this.vy=lerp(this.vy,0,0.3);
+    } else if (ptr.active) {                            // finger-drag (mobile)
       const dx=ptr.x-this.x, dy=ptr.y-this.y, d=Math.hypot(dx,dy);
       const f=clamp(d/110,0,1);
-      this.vx=lerp(this.vx,(d>3?dx/d:0)*speed*f,0.16);
-      this.vy=lerp(this.vy,(d>3?dy/d:0)*speed*f,0.16);
+      this.vx=lerp(this.vx,(d>3?dx/d:0)*speed*f,resp);
+      this.vy=lerp(this.vy,(d>3?dy/d:0)*speed*f,resp);
     } else {                                            // arrow keys (desktop)
       let kx=0, ky=0;
       if (keys["arrowleft"]) kx-=1;
@@ -537,18 +562,29 @@ class Player {
       if (keys["arrowup"]) ky-=1;
       if (keys["arrowdown"]) ky+=1;
       const m=Math.hypot(kx,ky)||1;
-      this.vx=lerp(this.vx,(kx/m)*speed,0.18);
-      this.vy=lerp(this.vy,(ky/m)*speed,0.18);
+      this.vx=lerp(this.vx,(kx/m)*speed,respK);
+      this.vy=lerp(this.vy,(ky/m)*speed,respK);
     }
     this.x=clamp(this.x+this.vx*dt, this.r, W-this.r);
     this.y=clamp(this.y+this.vy*dt, this.r, H-BAR_H-this.r);
     const sp=Math.hypot(this.vx,this.vy);
     this.phase+=dt*(4+sp*0.02);
     if (Math.abs(this.vx)>14) this.facing=this.vx>0?1:-1;
-    if (this.inv>0) this.inv-=dt;
   }
   draw(c) {
     if (this.inv>0 && Math.floor(this.inv*12)%2===0) return;
+    // power-up aura (drawn behind the sprite, in unscaled space)
+    const aura = this.feast>0 ? "#ffcf5a" : this.frozen>0 ? "#5fd0ff" : this.slow>0 ? "#9be36b" : null;
+    if (aura) {
+      const fade = this.feast>0 ? this.feast : this.frozen>0 ? this.frozen : this.slow;
+      const blink = fade<1.5 && Math.floor(fade*8)%2===0 ? 0.35 : 1;   // blink when running out
+      const pr = this.r*1.5 + Math.sin(animTime*6)*this.r*0.12;
+      c.save(); c.globalAlpha=0.55*blink;
+      const rg=c.createRadialGradient(this.x,this.y,this.r*0.5,this.x,this.y,pr);
+      rg.addColorStop(0,aura); rg.addColorStop(1,"rgba(0,0,0,0)");
+      c.fillStyle=rg; c.beginPath(); c.arc(this.x,this.y,pr,0,TAU); c.fill();
+      c.restore();
+    }
     const img = currentFrame();
     c.save(); c.translate(this.x,this.y);
     if (img) {
@@ -576,6 +612,58 @@ class Particle {
   update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; this.vy+=110*dt; this.life-=dt*1.8; }
   draw(c){ c.globalAlpha=Math.max(0,this.life); c.beginPath(); c.arc(this.x,this.y,this.r,0,TAU);
     c.fillStyle=this.col; c.fill(); c.globalAlpha=1; }
+}
+
+// =====================================================================
+//  Power-ups  — floating collectibles (image sprites with a glow)
+//    babi    → SMULMODUS: eet 7s lang ALLE vissen (ook grotere)
+//    joint   → SLOOM: 6s lang traag + wazig zwemmen
+//    loempia → BEVROREN: 2s lang niet kunnen bewegen
+// =====================================================================
+const PU_IMG = { babi:new Image(), joint:new Image(), loempia:new Image() };
+PU_IMG.babi.src    = "babi.png";
+PU_IMG.joint.src   = "joint.png";
+PU_IMG.loempia.src = "loempia.png";
+const PU_TYPES = [
+  { key:"babi",    glow:"#ffcf5a", weight:1.0 },   // good — rarer
+  { key:"joint",   glow:"#9be36b", weight:1.3 },   // trap
+  { key:"loempia", glow:"#5fd0ff", weight:1.3 },   // trap
+];
+function pickPU(){
+  const tot=PU_TYPES.reduce((s,t)=>s+t.weight,0); let r=Math.random()*tot;
+  for(const t of PU_TYPES){ if((r-=t.weight)<=0) return t; } return PU_TYPES[0];
+}
+class PowerUp {
+  constructor(){
+    this.type=pickPU();
+    const fromLeft=Math.random()<0.5;
+    this.r=34;                                       // collision radius (visual is wider)
+    this.x=fromLeft?-70:W+70;
+    this.baseY=rand(80, H-BAR_H-80);
+    this.y=this.baseY;
+    this.vx=rand(55,95)*(fromLeft?1:-1);
+    this.phase=rand(0,TAU); this.t=0; this.dead=false;
+  }
+  update(dt){
+    this.t+=dt; this.x+=this.vx*dt; this.phase+=dt*2;
+    this.y=this.baseY+Math.sin(this.phase)*12;       // gentle bob
+    const m=this.r+110;
+    if(this.vx>0 && this.x-m>W) this.dead=true;
+    if(this.vx<0 && this.x+m<0) this.dead=true;
+  }
+  draw(c){
+    const img=PU_IMG[this.type.key];
+    const pulse=0.6+Math.sin(this.t*4)*0.4;
+    c.save(); c.translate(this.x,this.y);
+    c.shadowColor=this.type.glow; c.shadowBlur=24+pulse*18;
+    if(img && img.complete && img.naturalWidth){
+      const iw=this.r*2.7, ih=iw*(img.naturalHeight/img.naturalWidth);
+      c.drawImage(img,-iw*0.5,-ih*0.5,iw,ih);
+    } else {
+      c.beginPath(); c.arc(0,0,this.r,0,TAU); c.fillStyle=this.type.glow; c.fill();
+    }
+    c.restore();
+  }
 }
 
 // =====================================================================
@@ -649,9 +737,9 @@ function drawBackground(t){
 // =====================================================================
 let state="start";
 let iosBlocked=false;                    // true on iPhone/iPad in Safari (not installed)
-let fishes=[]; const bubbles=[]; const particles=[];
+let fishes=[]; let powerups=[]; const bubbles=[]; const particles=[];
 const player=new Player();
-let spawnTimer=0, elapsed=0;
+let spawnTimer=0, elapsed=0, puTimer=6;
 for(let i=0;i<26;i++) bubbles.push(new Bubble());
 
 // =====================================================================
@@ -736,7 +824,7 @@ function startGame(){
   if(iosBlocked) return;                 // can't play in iOS browser — install first
   ensureAudio();                         // unlock + start music on this tap
   player.reset();
-  fishes=[]; particles.length=0; spawnTimer=0; elapsed=0;
+  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6;
   for(let i=0;i<6;i++){ spawnFish(); fishes[i].x=rand(0,W); }
   state="play";
   startScreen.classList.add("hidden");
@@ -749,12 +837,39 @@ function gameOver(msg){
 }
 function burst(x,y,col,n=12){ for(let i=0;i<n;i++) particles.push(new Particle(x,y,col)); }
 
+// ---------- Power-ups ----------
+const puMsgEl=document.getElementById("puMsg");
+let puMsgTimer=0;
+function showPU(text,color){
+  puMsgEl.textContent=text; puMsgEl.style.color=color;
+  puMsgEl.classList.add("show"); puMsgTimer=2.2;
+}
+function applyPU(key){
+  if(key==="babi"){
+    player.feast=7; burst(player.x,player.y,"#ffcf5a",22); sfx("eat");
+    showPU("🍖 SMULMODUS! Eet alles!", "#ffd36b");
+  } else if(key==="joint"){
+    player.slow=6; burst(player.x,player.y,"#9be36b",22); sfx("hit");
+    showPU("🌿 Sloom... je zwemt traag", "#9be36b");
+  } else if(key==="loempia"){
+    player.frozen=2; burst(player.x,player.y,"#5fd0ff",22); sfx("hit");
+    showPU("🧊 Bevroren! Even niet bewegen", "#7fd8ff");
+  }
+}
+function handlePowerups(){
+  for(const pu of powerups){
+    if(pu.dead) continue;
+    const dx=pu.x-player.x, dy=pu.y-player.y;
+    if(Math.hypot(dx,dy) < player.r + pu.r){ pu.dead=true; applyPU(pu.type.key); }
+  }
+}
+
 function handleEating(){
   for(const f of fishes){
     if(f.dead) continue;
     const dx=f.x-player.x, dy=f.y-player.y, dist=Math.hypot(dx,dy);
     if(dist < player.r + f.r*0.55){
-      if(f.r <= player.r*0.92){
+      if(player.feast>0 || f.r <= player.r*0.92){       // smulmodus → eet ook grotere vissen
         f.dead=true; player.score += Math.max(1,Math.round(f.r));
         player.r = Math.min(player.r + f.r*0.05, Math.min(W,H)*0.4);
         burst(f.x,f.y, f.p.mid, 10); sfx("eat"); updateHUD();
@@ -840,11 +955,17 @@ function loop(now){
       const big=spawnFish();
       spawnTimer=interval + (big ? 1.0 : 0);          // breather after a big fish
     }
+    // power-up spawning
+    puTimer-=dt;
+    if(puTimer<=0){ powerups.push(new PowerUp()); puTimer=rand(7,12); }
+    for(const pu of powerups) pu.update(dt);
     for(const f of fishes) f.update(dt);
-    player.update(dt); handleEating();
+    player.update(dt); handleEating(); handlePowerups();
     fishes=fishes.filter(f=>!f.dead);
+    powerups=powerups.filter(p=>!p.dead);
     fishes.sort((a,b)=>a.r-b.r);
     for(const f of fishes) f.draw(ctx);
+    for(const pu of powerups) pu.draw(ctx);
     player.draw(ctx);
   } else {
     if(fishes.length<6 && Math.random()<0.02){
@@ -859,8 +980,20 @@ function loop(now){
   for(const p of particles){ p.update(dt); p.draw(ctx); }
   for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
 
+  // screen tint for active debuffs (cheap CSS filter on the canvas)
+  let filt="";
+  if(state==="play"){
+    if(player.frozen>0)    filt="saturate(.8) brightness(1.12) hue-rotate(160deg) blur(.6px)";
+    else if(player.slow>0) filt="saturate(1.35) hue-rotate(38deg) blur(1.3px)";
+  }
+  if(filt!==curFilter){ canvas.style.filter=filt; curFilter=filt; }
+
+  // fade out the power-up banner
+  if(puMsgTimer>0){ puMsgTimer-=dt; if(puMsgTimer<=0) puMsgEl.classList.remove("show"); }
+
   requestAnimationFrame(loop);
 }
+let curFilter="";
 
 resize();
 updateHUD();
