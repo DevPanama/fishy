@@ -90,6 +90,7 @@
   .final span { color: #ffd36b; font-weight: 700; font-size: 28px; }
 
   /* ---------- Mobile / landscape ---------- */
+  #iosGate { z-index: 200; }            /* blocks play on iOS-in-browser */
   #lives { padding-left: env(safe-area-inset-left); }
   #bar { padding-right: env(safe-area-inset-right); }
   #rotate {
@@ -127,6 +128,26 @@
   <div id="rotate">
     <div class="phone">📱</div>
     <p>Draai je telefoon horizontaal om te spelen</p>
+  </div>
+
+  <!-- iOS gate: must install to Home Screen to play -->
+  <div class="overlay hidden" id="iosGate">
+    <div class="card">
+      <div style="font-size:54px; line-height:1">🐟</div>
+      <h1 style="font-size:36px; margin-top:6px">Speel Fishy als app</h1>
+      <div class="rules">
+        Op de iPhone speel je Fishy <b>niet in de browser</b>, maar als
+        echte fullscreen-app. Even toevoegen:<br><br>
+        1️⃣ Tik onderin op het <b>deel-icoon</b>
+        <svg viewBox="0 0 24 24" fill="none" style="width:20px;height:20px;vertical-align:-4px">
+          <path d="M12 3v12M12 3L8 7M12 3l4 4" stroke="#ffd36b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 11v8a1 1 0 001 1h10a1 1 0 001-1v-8" stroke="#ffd36b" stroke-width="2" stroke-linecap="round"/>
+        </svg><br>
+        2️⃣ Kies <b>"Zet op beginscherm"</b><br>
+        3️⃣ Open <b>Fishy</b> vanaf je beginscherm 🎉
+      </div>
+      <div class="small">Daarna speelt het volledig scherm, zonder Safari-balk.</div>
+    </div>
   </div>
 
   <!-- iOS: how to go truly fullscreen -->
@@ -623,6 +644,7 @@ function drawBackground(t){
 //  Game state
 // =====================================================================
 let state="start";
+let iosBlocked=false;                    // true on iPhone/iPad in Safari (not installed)
 let fishes=[]; const bubbles=[]; const particles=[];
 const player=new Player();
 let spawnTimer=0, elapsed=0;
@@ -650,6 +672,7 @@ function spawnFish(){
 }
 
 function startGame(){
+  if(iosBlocked) return;                 // can't play in iOS browser — install first
   player.reset();
   fishes=[]; particles.length=0; spawnTimer=0; elapsed=0;
   for(let i=0;i<6;i++){ spawnFish(); fishes[i].x=rand(0,W); }
@@ -710,6 +733,13 @@ const isStandalone = window.navigator.standalone === true ||
 const fsTip = document.getElementById("fsTip");
 const fsBtn = document.getElementById("fsBtn");
 if (isStandalone) fsBtn.style.display = "none";        // already fullscreen as installed app
+
+// iPhone/iPad in Safari → must install to Home Screen to play
+iosBlocked = isIOS && !isStandalone;
+if (iosBlocked) {
+  document.getElementById("iosGate").classList.remove("hidden");
+  fsBtn.style.display = "none";
+}
 fsBtn.addEventListener("click", () => {
   const el = document.documentElement;
   if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
