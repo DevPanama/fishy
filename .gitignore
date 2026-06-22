@@ -1,0 +1,6 @@
+.DS_Store
+*.log
+node_modules/
+# build artifacts / source media (not needed to run the game)
+cutout
+cutout_batch

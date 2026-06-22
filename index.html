@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Fishy 1</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #bcd9ec; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: none;
+  }
+  /* the framed game like a web portal */
+  #frame {
+    position: absolute; inset: 0;
+    border-radius: 18px; overflow: hidden;
+    box-shadow: 0 0 0 10px #cfe4f2, 0 18px 50px rgba(20,60,90,.35);
+  }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* ---------- Top HUD ---------- */
+  #score {
+    position: absolute; top: 14px; left: 0; right: 0; text-align: center;
+    font-size: 46px; font-weight: 700; color: #3f6e88;
+    text-shadow: 0 2px 3px rgba(255,255,255,.45);
+    pointer-events: none; z-index: 6; letter-spacing: 1px;
+  }
+  #lives {
+    position: absolute; top: 14px; left: 18px; z-index: 6;
+    display: flex; flex-wrap: wrap; gap: 6px 8px; max-width: 220px;
+    pointer-events: none;
+  }
+  #lives svg { width: 34px; height: 16px; }
+  #muteBtn {
+    position: absolute; left: 18px; bottom: 86px; z-index: 7;
+    width: 34px; height: 34px; cursor: pointer; opacity: .8;
+  }
+
+  /* ---------- Bottom portal bar ---------- */
+  #bar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 64px; z-index: 8;
+    background: linear-gradient(180deg, #aee0f3, #cdeaf7);
+    display: flex; align-items: center;
+  }
+  #bar .ico {
+    width: 46px; height: 46px; margin-left: 14px; border-radius: 12px;
+    background: linear-gradient(180deg,#6fc6e8,#2a7fb8);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,.18);
+    font-size: 9px; font-weight: 800; color: #fff; letter-spacing: .5px;
+    flex-direction: column; line-height: 1.1; overflow:hidden;
+  }
+  #bar .ico small { font-size: 11px; }
+  #bar .title { margin-left: 14px; font-size: 20px; font-weight: 700; color: #234e63; }
+  #bar .spacer { flex: 1; }
+  #bar .panel {
+    align-self: stretch; display: flex; align-items: center; gap: 16px;
+    padding: 0 26px 0 46px; background: #fff;
+    clip-path: polygon(40px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  #bar .panel button {
+    width: 42px; height: 42px; border-radius: 50%; background: #fff;
+    border: 2px solid #cfe0ea; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: transform .1s, border-color .15s;
+  }
+  #bar .panel button:hover { transform: translateY(-2px); }
+  #bar .panel button svg { width: 20px; height: 20px; }
+  #bar .panel button.up { border-color: #5b97c8; }
+  #bar .panel button.down { border-color: #e84d8a; }
+  #bar .panel button.share, #bar .panel button.full { border-color: #6aa8d4; }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    color: #fff; z-index: 20; transition: opacity .35s ease;
+    background: rgba(18, 70, 100, 0.42); backdrop-filter: blur(2px);
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    background: rgba(14, 64, 94, 0.78);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 22px; padding: 36px 44px; max-width: 430px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  h1 {
+    font-size: 56px; letter-spacing: 2px; margin-bottom: 4px; font-weight: 800;
+    background: linear-gradient(180deg, #ffd36b, #ff8a2b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tag { font-size: 15px; opacity: .85; margin-bottom: 20px; }
+  .rules { font-size: 15px; line-height: 1.7; opacity: .94; margin-bottom: 24px; text-align: left; }
+  .rules b { color: #ffd36b; }
+  .btn {
+    font-size: 18px; font-weight: 700; color: #073047;
+    background: linear-gradient(180deg, #ffd86f, #ffb43d);
+    border: none; border-radius: 999px; padding: 13px 36px; cursor: pointer;
+    box-shadow: 0 8px 22px rgba(255,170,50,0.4); transition: transform .12s ease;
+  }
+  .btn:hover { transform: translateY(-2px) scale(1.03); }
+  .small { margin-top: 14px; font-size: 13px; opacity: .6; }
+  .final { font-size: 20px; margin: 6px 0 16px; }
+  .final span { color: #ffd36b; font-weight: 700; font-size: 28px; }
+
+  /* ---------- Mobile / landscape ---------- */
+  #lives { padding-left: env(safe-area-inset-left); }
+  #bar { padding-right: env(safe-area-inset-right); }
+  #rotate {
+    display: none; position: absolute; inset: 0; z-index: 100;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #0e405e; color: #fff; text-align: center; padding: 30px;
+  }
+  #rotate .phone { font-size: 64px; animation: tilt 1.6s ease-in-out infinite; }
+  #rotate p { font-size: 20px; margin-top: 16px; font-weight: 600; }
+  @keyframes tilt { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-90deg)} }
+
+  @media (max-width: 900px) {
+    #frame { border-radius: 0; box-shadow: none; }
+    #score { font-size: 34px; top: 8px; }
+    #lives svg { width: 26px; height: 13px; }
+    #bar { height: 50px; }
+    #bar .ico { width: 36px; height: 36px; }
+    #bar .title { font-size: 16px; }
+    #bar .panel button { width: 36px; height: 36px; }
+    #muteBtn { bottom: 64px; }
+  }
+  /* show the rotate prompt only on small screens held in portrait */
+  @media (max-width: 900px) and (orientation: portrait) {
+    #rotate { display: flex; }
+  }
+</style>
+</head>
+<body>
+<div id="frame">
+  <canvas id="game"></canvas>
+
+  <div id="score">0</div>
+  <div id="lives"></div>
+
+  <!-- mute icon (decorative, like the original) -->
+  <svg id="muteBtn" viewBox="0 0 24 24" fill="none">
+    <path d="M4 9v6h4l5 4V5L8 9H4z" fill="#ffffff" opacity=".85"/>
+    <path d="M17 8l5 8M22 8l-5 8" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".85"/>
+  </svg>
+
+  <!-- bottom portal bar -->
+  <div id="bar">
+    <div class="ico"><span>🐟</span><small>FISHY</small></div>
+    <div class="title">Fishy 1</div>
+    <div class="spacer"></div>
+    <div class="panel">
+      <button class="up" title="Like">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M7 10v9H4v-9h3zm3 9c-.5 0-1-.4-1-1v-8c0-.3.1-.6.4-.8L14 4.5c.6-.5 1.5-.1 1.5.7V9h4.2c1 0 1.7.9 1.4 1.8l-1.8 6c-.2.7-.9 1.2-1.6 1.2H10z" stroke="#5b97c8" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="down" title="Dislike">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M17 14V5h3v9h-3zm-3-9c.5 0 1 .4 1 1v8c0 .3-.1.6-.4.8L10 19.5c-.6.5-1.5.1-1.5-.7V15H4.3c-1 0-1.7-.9-1.4-1.8l1.8-6c.2-.7.9-1.2 1.6-1.2H14z" stroke="#e84d8a" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="share" title="Delen">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><circle cx="18" cy="6" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><circle cx="18" cy="18" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><path d="M8 11l8-4M8 13l8 4" stroke="#6aa8d4" stroke-width="1.6"/></svg>
+      </button>
+      <button class="full" title="Volledig scherm" id="fsBtn">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="#6aa8d4" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- rotate-to-landscape prompt (mobile portrait) -->
+  <div id="rotate">
+    <div class="phone">📱</div>
+    <p>Draai je telefoon horizontaal om te spelen</p>
+  </div>
+
+  <!-- start -->
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>FISHY</h1>
+      <div class="tag">Eet of word gegeten</div>
+      <div class="rules">
+        🐟 <b>Sleep met je vinger</b> (of <b>pijltjestoetsen</b> op pc)<br>
+        🟢 Eet vissen die <b>kleiner</b> zijn dan jij<br>
+        🔴 Ontwijk vissen die <b>groter</b> zijn<br>
+        ⭐ Hoe meer je eet, hoe groter je wordt
+      </div>
+      <button class="btn" id="startBtn">Start spel</button>
+      <div class="small">Klik of druk op spatie</div>
+    </div>
+  </div>
+
+  <!-- game over -->
+  <div class="overlay hidden" id="overScreen">
+    <div class="card">
+      <h1 style="font-size:44px">Game Over</h1>
+      <div class="final">Score: <span id="finalScore">0</span></div>
+      <div class="tag" id="overMsg"></div>
+      <button class="btn" id="againBtn">Opnieuw</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const frame = document.getElementById("frame");
+
+let W = 0, H = 0, DPR = 1;
+const BAR_H = 64;                 // bottom bar height (play area sits above it)
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = frame.clientWidth; H = frame.clientHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildDecor();
+}
+window.addEventListener("resize", resize);
+
+// ---------- Input ----------
+// Finger-drag steering for mobile. The fish swims toward where your finger is.
+const ptr = { x: 0, y: 0, active: false };
+function setPtr(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  ptr.x = clientX - r.left; ptr.y = clientY - r.top; ptr.active = true;
+}
+canvas.addEventListener("touchstart", e => { const t=e.touches[0]; if(t) setPtr(t.clientX,t.clientY); e.preventDefault(); }, {passive:false});
+canvas.addEventListener("touchmove",  e => { const t=e.touches[0]; if(t) setPtr(t.clientX,t.clientY); e.preventDefault(); }, {passive:false});
+canvas.addEventListener("touchend",   e => { if(e.touches.length===0) ptr.active=false; }, {passive:false});
+canvas.addEventListener("touchcancel",e => { ptr.active=false; }, {passive:false});
+
+const keys = {};
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault();
+  if ((e.key === " " || e.key === "Enter") && (state==="start"||state==="over")) startGame();
+}, {passive:false});
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+// ---------- Helpers ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const TAU = Math.PI * 2;
+
+// =====================================================================
+//  FISH RENDERING  — species matched to the reference photo
+//  All draw in local space facing +x, origin at body centre.
+//  r = collision radius ≈ half body length.
+// =====================================================================
+function eye(c, ex, ey, R) {
+  c.beginPath(); c.arc(ex, ey, R, 0, TAU); c.fillStyle = "#10242e"; c.fill();
+  c.beginPath(); c.arc(ex + R*0.05, ey - R*0.32, R*0.34, 0, TAU); c.fillStyle = "#fff"; c.fill();
+  c.beginPath(); c.arc(ex - R*0.3, ey + R*0.25, R*0.16, 0, TAU);
+  c.fillStyle = "rgba(255,255,255,.5)"; c.fill();
+}
+
+// ----- Blue Tang ("Dory") : flat oval royal-blue body, yellow tail, black marking
+function drawTang(c, r, wag) {
+  const L = r, Hh = r * 0.74;
+  // tail (yellow, forked)
+  c.save(); c.translate(-L*0.82, 0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.4,-Hh*0.9,-L*0.62,-Hh*1.05);
+  c.lineTo(-L*0.5,-Hh*0.25);
+  c.quadraticCurveTo(-L*0.62,0,-L*0.5,Hh*0.25);
+  c.lineTo(-L*0.62,Hh*1.05);
+  c.quadraticCurveTo(-L*0.4,Hh*0.9,0,0);
+  c.closePath();
+  c.fillStyle = "#ffcf1a"; c.fill();
+  c.strokeStyle = "rgba(180,120,0,.4)"; c.lineWidth=r*0.04; c.stroke();
+  c.restore();
+  // dorsal + anal yellow edge
+  c.beginPath();
+  c.moveTo(L*0.2,-Hh*0.92); c.quadraticCurveTo(-L*0.4,-Hh*1.15,-L*0.7,-Hh*0.5);
+  c.quadraticCurveTo(-L*0.3,-Hh*0.75,L*0.2,-Hh*0.62); c.closePath();
+  c.fillStyle="#ffcf1a"; c.fill();
+  // body
+  const g = c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#3f86e0"); g.addColorStop(.5,"#1f5fc8"); g.addColorStop(1,"#103f9c");
+  c.beginPath(); c.ellipse(0,0,L*0.85,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // black palette marking (Dory pattern)
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.85,Hh,0,0,TAU); c.clip();
+  c.beginPath();
+  c.moveTo(L*0.5,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.2,-Hh*0.2,-L*0.7,-Hh*0.1);
+  c.lineTo(-L*0.7,Hh*0.5);
+  c.quadraticCurveTo(-L*0.1,Hh*0.1,L*0.1,Hh*0.85);
+  c.lineTo(L*0.45,Hh*0.85);
+  c.quadraticCurveTo(L*0.0,-Hh*0.05,L*0.62,-Hh*0.4);
+  c.closePath();
+  c.fillStyle="rgba(10,18,40,.92)"; c.fill();
+  c.restore();
+  // belly sheen
+  c.beginPath(); c.ellipse(L*0.15,Hh*0.45,L*0.55,Hh*0.3,0,0,TAU);
+  c.fillStyle="rgba(255,255,255,.12)"; c.fill();
+  // yellow pectoral fin
+  c.beginPath();
+  c.moveTo(L*0.25,Hh*0.15); c.quadraticCurveTo(L*0.15,Hh*0.75,L*0.5,Hh*0.55);
+  c.quadraticCurveTo(L*0.45,Hh*0.2,L*0.25,Hh*0.15); c.closePath();
+  c.fillStyle="#ffcf1a"; c.fill();
+  eye(c, L*0.55, -Hh*0.12, r*0.14);
+}
+
+// ----- Blue damselfish : rounded vivid-blue body
+function drawDamsel(c, r, wag) {
+  const L = r, Hh = r * 0.8;
+  c.save(); c.translate(-L*0.7,0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0); c.quadraticCurveTo(-L*0.5,-Hh*0.7,-L*0.65,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.45,0,-L*0.65,Hh*0.7);
+  c.quadraticCurveTo(-L*0.5,Hh*0.7,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#1a63c8"); tg.addColorStop(1,"#3a93f0");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal fin
+  c.beginPath(); c.moveTo(L*0.25,-Hh*0.8); c.quadraticCurveTo(-L*0.35,-Hh*1.15,-L*0.55,-Hh*0.55);
+  c.quadraticCurveTo(-L*0.1,-Hh*0.7,L*0.25,-Hh*0.7); c.closePath();
+  c.fillStyle="#1c66cc"; c.fill();
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#5fb0ff"); g.addColorStop(.55,"#2e86f0"); g.addColorStop(1,"#1a5fd0");
+  c.beginPath(); c.ellipse(0,0,L*0.78,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // lighter vertical bands
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.78,Hh,0,0,TAU); c.clip();
+  c.globalAlpha=.18; c.fillStyle="#bfe2ff";
+  for(let i=-1;i<=1;i++){ c.beginPath(); c.ellipse(i*L*0.32,0,L*0.06,Hh,0,0,TAU); c.fill(); }
+  c.restore();
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.5,L*0.5,Hh*0.28,0,0,TAU); c.fillStyle="rgba(255,255,255,.16)"; c.fill();
+  eye(c, L*0.42, -Hh*0.1, r*0.17);
+}
+
+// ----- Purple/magenta sleek fish
+function drawPurple(c, r, wag) {
+  const L = r, Hh = r * 0.44;
+  c.save(); c.translate(-L*0.85,0); c.rotate(wag*0.55);
+  c.beginPath();
+  c.moveTo(0,0); c.quadraticCurveTo(-L*0.45,-Hh*1.6,-L*0.7,-Hh*1.7);
+  c.lineTo(-L*0.55,0); c.lineTo(-L*0.7,Hh*1.7);
+  c.quadraticCurveTo(-L*0.45,Hh*1.6,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#7a3fb0"); tg.addColorStop(1,"#b072de");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal
+  c.beginPath(); c.moveTo(L*0.3,-Hh*0.95); c.quadraticCurveTo(-L*0.2,-Hh*1.7,-L*0.5,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.1,-Hh*0.85,L*0.3,-Hh*0.85); c.closePath();
+  c.fillStyle="#9450c8"; c.fill();
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#c98fe8"); g.addColorStop(.5,"#a35fd0"); g.addColorStop(1,"#7d3fb0");
+  c.beginPath(); c.ellipse(0,0,L*0.86,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // pink lateral stripe
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.86,Hh,0,0,TAU); c.clip();
+  c.beginPath(); c.moveTo(L,-Hh*0.1); c.lineTo(-L,-Hh*0.25); c.lineTo(-L,Hh*0.1); c.lineTo(L,Hh*0.25); c.closePath();
+  c.fillStyle="rgba(255,170,220,.4)"; c.fill(); c.restore();
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.45,L*0.55,Hh*0.4,0,0,TAU); c.fillStyle="rgba(255,255,255,.14)"; c.fill();
+  eye(c, L*0.58, -Hh*0.1, r*0.13);
+}
+
+// ----- Orange anthias / goldfish : the player & small orange fish
+function drawAnthias(c, r, wag, glow) {
+  const L = r, Hh = r * 0.6;
+  if (glow) { c.shadowColor="rgba(255,200,90,.8)"; c.shadowBlur=20; }
+  // flowing forked tail
+  c.save(); c.translate(-L*0.8,0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.5,-Hh*1.0,-L*0.78,-Hh*1.25);
+  c.quadraticCurveTo(-L*0.5,-Hh*0.2,-L*0.55,0);
+  c.quadraticCurveTo(-L*0.5,Hh*0.2,-L*0.78,Hh*1.25);
+  c.quadraticCurveTo(-L*0.5,Hh*1.0,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#ef6a2b"); tg.addColorStop(1,"#ff9a3c");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // wavy dorsal fin
+  c.beginPath();
+  c.moveTo(L*0.35,-Hh*0.78);
+  c.quadraticCurveTo(L*0.0,-Hh*1.35,-L*0.3,-Hh*0.95);
+  c.quadraticCurveTo(-L*0.55,-Hh*1.15,-L*0.6,-Hh*0.55);
+  c.quadraticCurveTo(-L*0.2,-Hh*0.7,L*0.35,-Hh*0.62); c.closePath();
+  c.fillStyle="#f47a2e"; c.fill();
+  // anal fin
+  c.beginPath(); c.moveTo(-L*0.1,Hh*0.55); c.quadraticCurveTo(-L*0.4,Hh*1.15,-L*0.55,Hh*0.6);
+  c.quadraticCurveTo(-L*0.25,Hh*0.55,-L*0.1,Hh*0.55); c.closePath();
+  c.fillStyle="#f47a2e"; c.fill();
+  c.shadowBlur = glow ? 20 : 0;
+  // body
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#ffb24a"); g.addColorStop(.45,"#ff8f2e"); g.addColorStop(1,"#ef6a24");
+  c.beginPath(); c.ellipse(0,0,L*0.82,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  c.shadowBlur=0;
+  // pale belly
+  c.beginPath(); c.ellipse(L*0.15,Hh*0.4,L*0.6,Hh*0.5,0,0,TAU);
+  c.fillStyle="rgba(255,240,210,.4)"; c.fill();
+  // pink cheek
+  c.beginPath(); c.ellipse(L*0.5,Hh*0.05,L*0.18,Hh*0.32,0,0,TAU);
+  c.fillStyle="rgba(255,120,90,.35)"; c.fill();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.28,Hh*0.1); c.quadraticCurveTo(L*0.05,Hh*0.7,L*0.45,Hh*0.5);
+  c.quadraticCurveTo(L*0.42,Hh*0.2,L*0.28,Hh*0.1); c.closePath();
+  c.fillStyle="rgba(255,150,70,.7)"; c.fill();
+  eye(c, L*0.55, -Hh*0.15, r*0.15);
+}
+
+// ----- Realistic rival fish (salmon-style body, NORMAL fish head) — recoloured variants
+const RIVALS = [
+  { back:"#c2664a", mid:"#e0917a", belly:"#f6d3c6", fin:"#d27a5e" }, // salmon / pink
+  { back:"#34687f", mid:"#5a92ab", belly:"#c4dce6", fin:"#3f7c95" }, // steel blue
+  { back:"#6b7a33", mid:"#93a258", belly:"#d3dca3", fin:"#76863c" }, // olive green
+  { back:"#bb8d2b", mid:"#e0bd57", belly:"#f5e7af", fin:"#caa13a" }, // golden
+  { back:"#7a4886", mid:"#a06fae", belly:"#dcc3e5", fin:"#8a5596" }, // violet
+];
+function drawRival(c, r, wag, p) {
+  const L = r, Hh = r * 0.52;
+  // forked tail
+  c.save(); c.translate(-L*0.84,0); c.rotate(wag*0.55);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.4,-Hh*1.2,-L*0.72,-Hh*1.5);
+  c.quadraticCurveTo(-L*0.5,-Hh*0.2,-L*0.52,0);
+  c.quadraticCurveTo(-L*0.5,Hh*0.2,-L*0.72,Hh*1.5);
+  c.quadraticCurveTo(-L*0.4,Hh*1.2,0,0);
+  c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,p.back); tg.addColorStop(1,p.fin);
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal fin
+  c.beginPath();
+  c.moveTo(L*0.28,-Hh*0.92);
+  c.quadraticCurveTo(-L*0.05,-Hh*1.75,-L*0.4,-Hh*0.85);
+  c.quadraticCurveTo(-L*0.05,-Hh*1.0,L*0.28,-Hh*0.8);
+  c.closePath(); c.fillStyle=p.fin; c.fill();
+  // anal fin
+  c.beginPath();
+  c.moveTo(-L*0.05,Hh*0.82);
+  c.quadraticCurveTo(-L*0.25,Hh*1.4,-L*0.42,Hh*0.78);
+  c.quadraticCurveTo(-L*0.2,Hh*0.8,-L*0.05,Hh*0.7);
+  c.closePath(); c.fillStyle=p.fin; c.fill();
+  // body
+  c.beginPath();
+  c.moveTo(L*0.98,0);
+  c.quadraticCurveTo(L*0.55,-Hh*0.95,-L*0.05,-Hh);
+  c.quadraticCurveTo(-L*0.7,-Hh*0.85,-L*0.9,0);
+  c.quadraticCurveTo(-L*0.7,Hh*0.85,-L*0.05,Hh);
+  c.quadraticCurveTo(L*0.55,Hh*0.95,L*0.98,0);
+  c.closePath();
+  const bg=c.createLinearGradient(0,-Hh,0,Hh);
+  bg.addColorStop(0,p.back); bg.addColorStop(.5,p.mid); bg.addColorStop(1,p.belly);
+  c.fillStyle=bg; c.fill();
+  // belly sheen
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.5,L*0.6,Hh*0.4,0,0,TAU);
+  c.fillStyle="rgba(255,255,255,.14)"; c.fill();
+  // lateral line
+  c.beginPath(); c.moveTo(L*0.8,-Hh*0.05);
+  c.quadraticCurveTo(0,-Hh*0.12,-L*0.7,-Hh*0.02);
+  c.lineWidth=Math.max(1,r*0.04); c.strokeStyle="rgba(255,255,255,.2)"; c.stroke();
+  // gill
+  c.beginPath(); c.arc(L*0.45,0,Hh*0.9,-1.0,1.0);
+  c.lineWidth=Math.max(1,r*0.05); c.strokeStyle="rgba(0,0,0,.12)"; c.stroke();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.35,Hh*0.15);
+  c.quadraticCurveTo(L*0.1,Hh*0.85,L*0.5,Hh*0.6);
+  c.quadraticCurveTo(L*0.5,Hh*0.3,L*0.35,Hh*0.15); c.closePath();
+  c.fillStyle=p.fin; c.globalAlpha=.85; c.fill(); c.globalAlpha=1;
+  // mouth
+  c.beginPath(); c.moveTo(L*0.98,Hh*0.06); c.lineTo(L*0.82,Hh*0.16);
+  c.lineWidth=Math.max(1,r*0.05); c.strokeStyle="rgba(0,0,0,.3)"; c.stroke();
+  // eye
+  eye(c, L*0.62, -Hh*0.25, r*0.13);
+}
+
+const SPECIES = {
+  tang:    { draw: drawTang,    ht: 0.74 },
+  damsel:  { draw: drawDamsel,  ht: 0.80 },
+  purple:  { draw: drawPurple,  ht: 0.44 },
+  anthias: { draw: drawAnthias, ht: 0.60 },
+};
+const SPECIES_KEYS = ["tang","damsel","purple","tang","anthias","damsel"];
+
+// =====================================================================
+//  Entities
+// =====================================================================
+class Fish {
+  constructor(r, x, y, vx, p) {
+    this.r = r; this.x = x; this.y = y; this.vx = vx;
+    this.p = p;
+    this.phase = rand(0, TAU);
+    this.dead = false;
+  }
+  update(dt) {
+    this.x += this.vx * dt;                          // HORIZONTAL ONLY, fixed lane
+    this.phase += dt * (4 + Math.abs(this.vx) * 0.03);
+    const m = this.r + 80;
+    if (this.vx > 0 && this.x - m > W) this.dead = true;
+    if (this.vx < 0 && this.x + m < 0) this.dead = true;
+  }
+  draw(c) {
+    const dir = this.vx >= 0 ? 1 : -1;
+    const wag = Math.sin(this.phase) * 0.5;
+    c.save(); c.translate(this.x, this.y); c.scale(dir, 1);
+    drawRival(c, this.r, wag, this.p);
+    c.restore();
+  }
+}
+
+// Animated player sprite: 61 transparent frames from the video, looped continuously.
+const FRAME_COUNT = 61, FRAME_FPS = 12;
+const frames = [];
+let animTime = 0;
+for (let i = 1; i <= FRAME_COUNT; i++) {
+  const im = new Image();
+  im.src = "frames/frame_" + String(i).padStart(3, "0") + ".png";
+  frames.push(im);
+}
+function currentFrame() {
+  const idx = Math.floor(animTime * FRAME_FPS) % FRAME_COUNT;
+  let img = frames[idx];
+  if (!(img && img.complete && img.naturalWidth)) img = frames[0];
+  return (img && img.complete && img.naturalWidth) ? img : null;
+}
+
+class Player {
+  constructor(){ this.reset(); }
+  reset() {
+    this.r = 20; this.x = W*0.5; this.y = H*0.5;
+    this.vx = 0; this.vy = 0; this.phase = 0; this.facing = 1;
+    this.inv = 0; this.score = 0; this.lives = 3;
+  }
+  update(dt) {
+    const speed = 300 + this.r * 1.4;
+    if (ptr.active) {                                   // finger-drag (mobile)
+      const dx=ptr.x-this.x, dy=ptr.y-this.y, d=Math.hypot(dx,dy);
+      const f=clamp(d/110,0,1);
+      this.vx=lerp(this.vx,(d>3?dx/d:0)*speed*f,0.16);
+      this.vy=lerp(this.vy,(d>3?dy/d:0)*speed*f,0.16);
+    } else {                                            // arrow keys (desktop)
+      let kx=0, ky=0;
+      if (keys["arrowleft"]) kx-=1;
+      if (keys["arrowright"]) kx+=1;
+      if (keys["arrowup"]) ky-=1;
+      if (keys["arrowdown"]) ky+=1;
+      const m=Math.hypot(kx,ky)||1;
+      this.vx=lerp(this.vx,(kx/m)*speed,0.18);
+      this.vy=lerp(this.vy,(ky/m)*speed,0.18);
+    }
+    this.x=clamp(this.x+this.vx*dt, this.r, W-this.r);
+    this.y=clamp(this.y+this.vy*dt, this.r, H-BAR_H-this.r);
+    const sp=Math.hypot(this.vx,this.vy);
+    this.phase+=dt*(4+sp*0.02);
+    if (Math.abs(this.vx)>14) this.facing=this.vx>0?1:-1;
+    if (this.inv>0) this.inv-=dt;
+  }
+  draw(c) {
+    if (this.inv>0 && Math.floor(this.inv*12)%2===0) return;
+    const img = currentFrame();
+    c.save(); c.translate(this.x,this.y);
+    if (img) {
+      const iw = this.r*3.1, ih = iw * (img.naturalHeight/img.naturalWidth);
+      c.scale(-this.facing, 1);                       // sprite faces left → flip when moving right
+      c.shadowColor="rgba(255,210,90,.4)"; c.shadowBlur=14;
+      c.drawImage(img, -iw*0.5, -ih*0.5, iw, ih);
+    } else {
+      c.beginPath(); c.arc(0,0,this.r,0,TAU); c.fillStyle="#ff8f2e"; c.fill();
+    }
+    c.restore();
+  }
+}
+
+class Bubble {
+  constructor(){ this.reset(true); }
+  reset(init){ this.x=rand(0,W); this.y=init?rand(0,H):H+10; this.r=rand(1.5,5); this.sp=rand(26,64); this.dr=rand(-8,8); this.ph=rand(0,TAU); }
+  update(dt){ this.y-=this.sp*dt; this.x+=Math.sin(this.ph+=dt*2)*this.dr*dt; if(this.y<-10) this.reset(false); }
+  draw(c){ c.beginPath(); c.arc(this.x,this.y,this.r,0,TAU); c.fillStyle="rgba(255,255,255,.13)"; c.fill();
+    c.lineWidth=1; c.strokeStyle="rgba(255,255,255,.28)"; c.stroke(); }
+}
+class Particle {
+  constructor(x,y,col){ this.x=x;this.y=y; const a=rand(0,TAU),s=rand(40,150);
+    this.vx=Math.cos(a)*s; this.vy=Math.sin(a)*s; this.life=1; this.col=col; this.r=rand(2,5); }
+  update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; this.vy+=110*dt; this.life-=dt*1.8; }
+  draw(c){ c.globalAlpha=Math.max(0,this.life); c.beginPath(); c.arc(this.x,this.y,this.r,0,TAU);
+    c.fillStyle=this.col; c.fill(); c.globalAlpha=1; }
+}
+
+// =====================================================================
+//  Background (matched to the photo: sunlit top, rays, rippled sand)
+// =====================================================================
+const seaweeds=[], corals=[];
+function buildDecor(){
+  seaweeds.length=0; corals.length=0;
+  const n=Math.max(4,Math.floor(W/260));
+  for(let i=0;i<n;i++) seaweeds.push({x:rand(40,W-40),h:rand(60,130),w:rand(7,13),ph:rand(0,TAU),blades:(Math.random()*2|0)+2});
+  for(let i=0;i<Math.max(2,n-2);i++) corals.push({x:rand(30,W-30),s:rand(.7,1.25),col:pick(["#c89bd9","#b98ed0","#d6a6c6"])});
+}
+
+function drawBackground(t){
+  const sandTop = H - BAR_H - Math.min(120, H*0.16);
+  // water
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,"#9fdcf0"); g.addColorStop(.25,"#5fbfe0");
+  g.addColorStop(.6,"#2f9fcf"); g.addColorStop(1,"#1f80b0");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // bright surface glow top-centre
+  const rg=ctx.createRadialGradient(W*0.5,-H*0.1,10,W*0.5,-H*0.1,H*0.9);
+  rg.addColorStop(0,"rgba(255,255,255,.5)"); rg.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=rg; ctx.fillRect(0,0,W,H*0.7);
+  // light rays
+  ctx.save(); ctx.globalCompositeOperation="lighter";
+  const cx=W*0.5;
+  for(let i=0;i<7;i++){
+    const off=(i-3)*W*0.085, sway=Math.sin(t*0.0003+i)*26, tw=22+i*5;
+    ctx.beginPath();
+    ctx.moveTo(cx+off-tw+sway,0); ctx.lineTo(cx+off+tw+sway,0);
+    ctx.lineTo(cx+off+tw*3+sway*2,H*0.95); ctx.lineTo(cx+off-tw*3+sway*2,H*0.95); ctx.closePath();
+    const lg=ctx.createLinearGradient(0,0,0,H);
+    lg.addColorStop(0,"rgba(225,248,255,.13)"); lg.addColorStop(1,"rgba(225,248,255,0)");
+    ctx.fillStyle=lg; ctx.fill();
+  }
+  ctx.restore();
+  // sand
+  const sg=ctx.createLinearGradient(0,sandTop,0,H);
+  sg.addColorStop(0,"#efe0b4"); sg.addColorStop(1,"#dcc488");
+  ctx.beginPath(); ctx.moveTo(0,sandTop+18);
+  const step=W/9;
+  for(let i=0;i<=9;i++){ ctx.lineTo(i*step, sandTop+Math.sin(i*1.3+2)*12+(i%2?5:0)); }
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+  ctx.fillStyle=sg; ctx.fill();
+  // sand ripples
+  ctx.save(); ctx.beginPath(); ctx.moveTo(0,sandTop+18);
+  for(let i=0;i<=9;i++){ ctx.lineTo(i*step, sandTop+Math.sin(i*1.3+2)*12+(i%2?5:0)); }
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle="rgba(180,150,90,.22)"; ctx.lineWidth=3;
+  for(let k=0;k<5;k++){ ctx.beginPath();
+    for(let x=0;x<=W;x+=18){ const y=sandTop+34+k*22+Math.sin(x*0.02+k)*6; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.stroke(); }
+  ctx.restore();
+  // seaweed
+  for(const s of seaweeds){ const by=sandTop+6;
+    for(let b=0;b<s.blades;b++){ const bx=s.x+(b-s.blades/2)*s.w*1.2;
+      ctx.beginPath(); ctx.moveTo(bx,by);
+      const sway=Math.sin(t*0.0015+s.ph+b)*14;
+      ctx.quadraticCurveTo(bx+sway,by-s.h*0.5,bx+sway*1.6,by-s.h);
+      ctx.lineWidth=s.w*(1-b*0.12); ctx.lineCap="round";
+      ctx.strokeStyle=b%2?"#4aa85c":"#3c9450"; ctx.stroke(); } }
+  // coral
+  for(const co of corals){ const by=sandTop+12;
+    ctx.save(); ctx.translate(co.x,by); ctx.scale(co.s,co.s); ctx.fillStyle=co.col;
+    for(let k=0;k<5;k++){ ctx.beginPath(); ctx.ellipse((k-2)*8,-12-Math.abs(k-2)*4,6,15,0,0,TAU); ctx.fill(); }
+    ctx.restore(); }
+}
+
+// =====================================================================
+//  Game state
+// =====================================================================
+let state="start";
+let fishes=[]; const bubbles=[]; const particles=[];
+const player=new Player();
+let spawnTimer=0, elapsed=0;
+for(let i=0;i<26;i++) bubbles.push(new Bubble());
+
+function laneY(){ return rand(40, H - BAR_H - 50); }
+
+// returns true if a "dangerous" (bigger-than-player) fish was spawned
+function spawnFish(){
+  const fromLeft=Math.random()<0.5;
+  const t=clamp(elapsed/90,0,1);                       // slower difficulty ramp
+  // how many threats are already on screen — keeps it from piling up
+  const bigOnScreen = fishes.filter(f => f.r > player.r*1.05).length;
+  let rr, roll=Math.random(), big=false;
+  if(roll < 0.68 - t*0.10)       rr=rand(player.r*0.35, player.r*0.85);  // edible (more common)
+  else if(roll < 0.90)           rr=rand(player.r*0.92, player.r*1.25);  // risky / slightly bigger
+  else { rr=rand(player.r*1.4, player.r*2.1); big=true; }                // dangerous (rarer, smaller)
+  // don't let too many big fish be around at once
+  if(big && bigOnScreen >= 2){ rr=rand(player.r*0.5, player.r*0.85); big=false; }
+  rr=clamp(rr, 10, Math.min(W,H)*0.4);
+  const speed=rand(50,120)*(fromLeft?1:-1)*(1+t*0.3);
+  const m=rr+40;
+  fishes.push(new Fish(rr, fromLeft?-m:W+m, laneY(), speed, pick(RIVALS)));
+  return big;
+}
+
+function startGame(){
+  player.reset();
+  fishes=[]; particles.length=0; spawnTimer=0; elapsed=0;
+  for(let i=0;i<6;i++){ spawnFish(); fishes[i].x=rand(0,W); }
+  state="play";
+  startScreen.classList.add("hidden");
+  overScreen.classList.add("hidden");
+  updateHUD();
+}
+function gameOver(msg){
+  state="over"; finalScore.textContent=player.score; overMsg.textContent=msg;
+  overScreen.classList.remove("hidden");
+}
+function burst(x,y,col,n=12){ for(let i=0;i<n;i++) particles.push(new Particle(x,y,col)); }
+
+function handleEating(){
+  for(const f of fishes){
+    if(f.dead) continue;
+    const dx=f.x-player.x, dy=f.y-player.y, dist=Math.hypot(dx,dy);
+    if(dist < player.r + f.r*0.55){
+      if(f.r <= player.r*0.92){
+        f.dead=true; player.score += Math.max(1,Math.round(f.r));
+        player.r = Math.min(player.r + f.r*0.05, Math.min(W,H)*0.4);
+        burst(f.x,f.y, f.p.mid, 10); updateHUD();
+      } else if(player.inv<=0){
+        player.lives--; player.inv=2.2;
+        burst(player.x,player.y,"#ffd36b",16);
+        player.r=Math.max(20, player.r*0.85); updateHUD();
+        if(player.lives<=0) gameOver("Je werd opgegeten door een grotere vis!");
+      }
+    }
+  }
+}
+function speciesColor(k){ return {tang:"#2f7fd6",damsel:"#3a93f0",purple:"#a35fd0",anthias:"#ff8f2e"}[k]; }
+
+// ---------- HUD ----------
+const scoreEl=document.getElementById("score");
+const livesEl=document.getElementById("lives");
+const startScreen=document.getElementById("startScreen");
+const overScreen=document.getElementById("overScreen");
+const finalScore=document.getElementById("finalScore");
+const overMsg=document.getElementById("overMsg");
+
+const BONE = '<svg viewBox="0 0 40 18"><g stroke="#e8eef2" stroke-width="2" fill="none" stroke-linecap="round"><path d="M30 9c0-4 4-7 8-7-1 3-1 11 0 14-4 0-8-3-8-7z" fill="#dde6ec"/><circle cx="33" cy="9" r="1.4" fill="#9fb2bd" stroke="none"/><path d="M30 9H6"/><path d="M24 4v10M18 3v12M12 4v10"/><path d="M6 9l-3-4M6 9l-3 4"/></g></svg>';
+function updateHUD(){
+  scoreEl.textContent = player.score;
+  let h=""; for(let i=0;i<player.lives;i++) h+=BONE;
+  livesEl.innerHTML=h;
+}
+
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("againBtn").addEventListener("click", startGame);
+document.getElementById("fsBtn").addEventListener("click", ()=>{
+  if(!document.fullscreenElement) frame.requestFullscreen?.(); else document.exitFullscreen?.();
+});
+
+// =====================================================================
+//  Main loop
+// =====================================================================
+let last=performance.now();
+function loop(now){
+  let dt=(now-last)/1000; last=now; dt=Math.min(dt,0.05);
+  animTime += dt;                                    // drive the looping fish animation
+  drawBackground(now);
+  for(const b of bubbles){ b.update(dt); b.draw(ctx); }
+
+  if(state==="play"){
+    elapsed+=dt; spawnTimer-=dt;
+    const interval=clamp(1.25-elapsed*0.004,0.7,1.25);
+    if(spawnTimer<=0 && fishes.length<11){
+      const big=spawnFish();
+      spawnTimer=interval + (big ? 1.0 : 0);          // breather after a big fish
+    }
+    for(const f of fishes) f.update(dt);
+    player.update(dt); handleEating();
+    fishes=fishes.filter(f=>!f.dead);
+    fishes.sort((a,b)=>a.r-b.r);
+    for(const f of fishes) f.draw(ctx);
+    player.draw(ctx);
+  } else {
+    if(fishes.length<6 && Math.random()<0.02){
+      const rr=rand(16,42), fl=Math.random()<0.5;
+      fishes.push(new Fish(rr, fl?-50:W+50, laneY(), rand(45,100)*(fl?1:-1), pick(RIVALS)));
+    }
+    for(const f of fishes) f.update(dt);
+    fishes=fishes.filter(f=>!f.dead);
+    for(const f of fishes) f.draw(ctx);
+  }
+
+  for(const p of particles){ p.update(dt); p.draw(ctx); }
+  for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
+
+  requestAnimationFrame(loop);
+}
+
+resize();
+updateHUD();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
