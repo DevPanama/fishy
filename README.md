@@ -1,4 +1,4 @@
-# Fishy 🐟
+# Herwiny 🐟
 
 Een onderwater "eet of word gegeten" spel. Bestuur de happende vis, eet kleinere
 vissen om te groeien en ontwijk de grotere.
