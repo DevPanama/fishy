@@ -45,16 +45,17 @@
   }
   #lives svg { width: 34px; height: 16px; }
 
-  /* fullscreen button (top-right) */
-  #fsBtn {
+  /* top-right buttons (sound + fullscreen) */
+  #fsBtn, #muteBtn {
     position: absolute; top: 12px; z-index: 7;
-    right: calc(14px + env(safe-area-inset-right));
     width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
     background: rgba(10,50,75,.35); border: 1px solid rgba(255,255,255,.35);
     display: flex; align-items: center; justify-content: center;
     -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
   }
-  #fsBtn svg { width: 22px; height: 22px; }
+  #fsBtn  { right: calc(14px + env(safe-area-inset-right)); }
+  #muteBtn{ right: calc(62px + env(safe-area-inset-right)); }
+  #fsBtn svg, #muteBtn svg { width: 22px; height: 22px; }
 
   /* ---------- Overlays ---------- */
   .overlay {
@@ -118,6 +119,9 @@
 
   <div id="score">0</div>
   <div id="lives"></div>
+
+  <!-- sound toggle (top-right) -->
+  <button id="muteBtn" title="Geluid aan/uit"></button>
 
   <!-- fullscreen toggle (top-right) -->
   <button id="fsBtn" title="Volledig scherm">
@@ -650,6 +654,81 @@ const player=new Player();
 let spawnTimer=0, elapsed=0;
 for(let i=0;i<26;i++) bubbles.push(new Bubble());
 
+// =====================================================================
+//  Audio — generative background music + sound effects (Web Audio API)
+//  No files needed. Starts on the first tap (required by iOS).
+// =====================================================================
+let actx=null, master=null, musicGain=null, sfxGain=null, musicLP=null;
+let muted = localStorage.getItem("fishyMuted")==="1";
+let schedTimer=null, step16=0, nextNoteT=0;
+const midi2f = m => 440*Math.pow(2,(m-69)/12);
+const PROG = [[60,64,67],[55,59,67],[57,60,64],[53,57,60]]; // C  G  Am  F
+const tempo=92, eighth=(60/tempo)/2;
+
+function ensureAudio(){
+  if(actx) { if(actx.state==="suspended") actx.resume(); return; }
+  const AC = window.AudioContext||window.webkitAudioContext;
+  if(!AC) return;
+  actx = new AC();
+  master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+  musicLP = actx.createBiquadFilter(); musicLP.type="lowpass"; musicLP.frequency.value=1600;
+  musicGain = actx.createGain(); musicGain.gain.value = muted?0:0.32;
+  musicLP.connect(musicGain); musicGain.connect(master);
+  sfxGain = actx.createGain(); sfxGain.gain.value = muted?0:0.7; sfxGain.connect(master);
+  // silent-buffer unlock for iOS
+  const b=actx.createBuffer(1,1,22050), s=actx.createBufferSource(); s.buffer=b; s.connect(actx.destination); s.start(0);
+  nextNoteT = actx.currentTime + 0.1;
+  schedTimer = setInterval(scheduler, 25);
+}
+function tone(time,freq,dur,type,gain,dest){
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,time);
+  g.gain.linearRampToValueAtTime(gain,time+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  o.connect(g); g.connect(dest||musicLP);
+  o.start(time); o.stop(time+dur+0.05);
+}
+function scheduler(){
+  if(!actx) return;
+  while(nextNoteT < actx.currentTime + 0.13){
+    const chord = PROG[Math.floor(step16/8)%PROG.length];
+    if(step16%8===0){                                   // pad + bass at each chord
+      chord.forEach(m=>tone(nextNoteT, midi2f(m), eighth*8, "sine", 0.05));
+      tone(nextNoteT, midi2f(chord[0]-24), eighth*8, "triangle", 0.06);
+    }
+    const arpPat=[0,1,2,1,2,1,0,2];                      // gentle arpeggio
+    const m = chord[arpPat[step16%8]%chord.length]+12;
+    tone(nextNoteT, midi2f(m), eighth*0.9, "triangle", 0.10);
+    nextNoteT += eighth; step16++;
+  }
+}
+function sfx(type){
+  if(!actx) return;
+  const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain();
+  o.connect(g); g.connect(sfxGain);
+  if(type==="eat"){
+    o.type="square"; o.frequency.setValueAtTime(520,t); o.frequency.exponentialRampToValueAtTime(1050,t+0.12);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+    o.start(t); o.stop(t+0.2);
+  } else if(type==="hit"){
+    o.type="sawtooth"; o.frequency.setValueAtTime(240,t); o.frequency.exponentialRampToValueAtTime(70,t+0.25);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.4,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+    o.start(t); o.stop(t+0.35);
+  } else if(type==="over"){
+    o.type="triangle";
+    [0,0.18,0.36].forEach((d,i)=>{ o.frequency.setValueAtTime(midi2f(64-i*4),t+d); });
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.6);
+    o.start(t); o.stop(t+0.65);
+  }
+}
+function setMuted(m){
+  muted=m; localStorage.setItem("fishyMuted", m?"1":"0");
+  if(actx){ musicGain.gain.value=m?0:0.32; sfxGain.gain.value=m?0:0.7; }
+  const mb=document.getElementById("muteBtn");
+  if(mb) mb.innerHTML = m ? ICON_MUTE : ICON_SOUND;
+}
+
 function laneY(){ return rand(40, H - BAR_H - 50); }
 
 // returns true if a "dangerous" (bigger-than-player) fish was spawned
@@ -673,6 +752,7 @@ function spawnFish(){
 
 function startGame(){
   if(iosBlocked) return;                 // can't play in iOS browser — install first
+  ensureAudio();                         // unlock + start music on this tap
   player.reset();
   fishes=[]; particles.length=0; spawnTimer=0; elapsed=0;
   for(let i=0;i<6;i++){ spawnFish(); fishes[i].x=rand(0,W); }
@@ -683,7 +763,7 @@ function startGame(){
 }
 function gameOver(msg){
   state="over"; finalScore.textContent=player.score; overMsg.textContent=msg;
-  overScreen.classList.remove("hidden");
+  overScreen.classList.remove("hidden"); sfx("over");
 }
 function burst(x,y,col,n=12){ for(let i=0;i<n;i++) particles.push(new Particle(x,y,col)); }
 
@@ -695,10 +775,10 @@ function handleEating(){
       if(f.r <= player.r*0.92){
         f.dead=true; player.score += Math.max(1,Math.round(f.r));
         player.r = Math.min(player.r + f.r*0.05, Math.min(W,H)*0.4);
-        burst(f.x,f.y, f.p.mid, 10); updateHUD();
+        burst(f.x,f.y, f.p.mid, 10); sfx("eat"); updateHUD();
       } else if(player.inv<=0){
         player.lives--; player.inv=2.2;
-        burst(player.x,player.y,"#ffd36b",16);
+        burst(player.x,player.y,"#ffd36b",16); sfx("hit");
         player.r=Math.max(20, player.r*0.85); updateHUD();
         if(player.lives<=0) gameOver("Je werd opgegeten door een grotere vis!");
       }
@@ -752,6 +832,14 @@ fsBtn.addEventListener("click", () => {
   }
 });
 document.getElementById("fsTipClose").addEventListener("click", () => fsTip.classList.add("hidden"));
+
+// ---------- Sound toggle ----------
+const ICON_SOUND = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff"/><path d="M16 9a4 4 0 010 6M18.5 7a7 7 0 010 10" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_MUTE  = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff" opacity=".7"/><path d="M16 9l5 6M21 9l-5 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const muteBtn = document.getElementById("muteBtn");
+muteBtn.innerHTML = muted ? ICON_MUTE : ICON_SOUND;
+if (isStandalone === false && iosBlocked) muteBtn.style.display = "none";
+muteBtn.addEventListener("click", () => { ensureAudio(); setMuted(!muted); });
 
 // =====================================================================
 //  Main loop
