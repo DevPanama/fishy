@@ -3,7 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Fishy 1</title>
+<title>Fishy</title>
+<!-- PWA / fullscreen on phones (Add to Home Screen) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fishy">
+<meta name="theme-color" content="#1f80b0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #bcd9ec; }
@@ -11,11 +19,15 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     -webkit-user-select: none; user-select: none; touch-action: none;
   }
-  /* the framed game like a web portal */
+  /* the framed game like a web portal (desktop only) */
   #frame {
-    position: absolute; inset: 0;
-    border-radius: 18px; overflow: hidden;
-    box-shadow: 0 0 0 10px #cfe4f2, 0 18px 50px rgba(20,60,90,.35);
+    position: fixed; left: 0; top: 0; width: 100vw;
+    height: 100vh; height: 100dvh;          /* dvh = excludes Safari bars where supported */
+    overflow: hidden;
+  }
+  @media (min-width: 901px) {
+    #frame { inset: 24px; left: 24px; top: 24px; width: auto; height: auto;
+      border-radius: 18px; box-shadow: 0 0 0 10px #cfe4f2, 0 18px 50px rgba(20,60,90,.35); }
   }
   #game { display: block; width: 100%; height: 100%; }
 
@@ -32,43 +44,17 @@
     pointer-events: none;
   }
   #lives svg { width: 34px; height: 16px; }
-  #muteBtn {
-    position: absolute; left: 18px; bottom: 86px; z-index: 7;
-    width: 34px; height: 34px; cursor: pointer; opacity: .8;
-  }
 
-  /* ---------- Bottom portal bar ---------- */
-  #bar {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 64px; z-index: 8;
-    background: linear-gradient(180deg, #aee0f3, #cdeaf7);
-    display: flex; align-items: center;
-  }
-  #bar .ico {
-    width: 46px; height: 46px; margin-left: 14px; border-radius: 12px;
-    background: linear-gradient(180deg,#6fc6e8,#2a7fb8);
+  /* fullscreen button (top-right) */
+  #fsBtn {
+    position: absolute; top: 12px; z-index: 7;
+    right: calc(14px + env(safe-area-inset-right));
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    background: rgba(10,50,75,.35); border: 1px solid rgba(255,255,255,.35);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 6px rgba(0,0,0,.18);
-    font-size: 9px; font-weight: 800; color: #fff; letter-spacing: .5px;
-    flex-direction: column; line-height: 1.1; overflow:hidden;
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
   }
-  #bar .ico small { font-size: 11px; }
-  #bar .title { margin-left: 14px; font-size: 20px; font-weight: 700; color: #234e63; }
-  #bar .spacer { flex: 1; }
-  #bar .panel {
-    align-self: stretch; display: flex; align-items: center; gap: 16px;
-    padding: 0 26px 0 46px; background: #fff;
-    clip-path: polygon(40px 0, 100% 0, 100% 100%, 0 100%);
-  }
-  #bar .panel button {
-    width: 42px; height: 42px; border-radius: 50%; background: #fff;
-    border: 2px solid #cfe0ea; cursor: pointer; display: flex;
-    align-items: center; justify-content: center; transition: transform .1s, border-color .15s;
-  }
-  #bar .panel button:hover { transform: translateY(-2px); }
-  #bar .panel button svg { width: 20px; height: 20px; }
-  #bar .panel button.up { border-color: #5b97c8; }
-  #bar .panel button.down { border-color: #e84d8a; }
-  #bar .panel button.share, #bar .panel button.full { border-color: #6aa8d4; }
+  #fsBtn svg { width: 22px; height: 22px; }
 
   /* ---------- Overlays ---------- */
   .overlay {
@@ -116,14 +102,8 @@
   @keyframes tilt { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-90deg)} }
 
   @media (max-width: 900px) {
-    #frame { border-radius: 0; box-shadow: none; }
-    #score { font-size: 34px; top: 8px; }
+    #score { font-size: 32px; top: 6px; }
     #lives svg { width: 26px; height: 13px; }
-    #bar { height: 50px; }
-    #bar .ico { width: 36px; height: 36px; }
-    #bar .title { font-size: 16px; }
-    #bar .panel button { width: 36px; height: 36px; }
-    #muteBtn { bottom: 64px; }
   }
   /* show the rotate prompt only on small screens held in portrait */
   @media (max-width: 900px) and (orientation: portrait) {
@@ -138,37 +118,30 @@
   <div id="score">0</div>
   <div id="lives"></div>
 
-  <!-- mute icon (decorative, like the original) -->
-  <svg id="muteBtn" viewBox="0 0 24 24" fill="none">
-    <path d="M4 9v6h4l5 4V5L8 9H4z" fill="#ffffff" opacity=".85"/>
-    <path d="M17 8l5 8M22 8l-5 8" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".85"/>
-  </svg>
-
-  <!-- bottom portal bar -->
-  <div id="bar">
-    <div class="ico"><span>🐟</span><small>FISHY</small></div>
-    <div class="title">Fishy 1</div>
-    <div class="spacer"></div>
-    <div class="panel">
-      <button class="up" title="Like">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M7 10v9H4v-9h3zm3 9c-.5 0-1-.4-1-1v-8c0-.3.1-.6.4-.8L14 4.5c.6-.5 1.5-.1 1.5.7V9h4.2c1 0 1.7.9 1.4 1.8l-1.8 6c-.2.7-.9 1.2-1.6 1.2H10z" stroke="#5b97c8" stroke-width="1.6" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="down" title="Dislike">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M17 14V5h3v9h-3zm-3-9c.5 0 1 .4 1 1v8c0 .3-.1.6-.4.8L10 19.5c-.6.5-1.5.1-1.5-.7V15H4.3c-1 0-1.7-.9-1.4-1.8l1.8-6c.2-.7.9-1.2 1.6-1.2H14z" stroke="#e84d8a" stroke-width="1.6" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="share" title="Delen">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><circle cx="18" cy="6" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><circle cx="18" cy="18" r="2.4" stroke="#6aa8d4" stroke-width="1.6"/><path d="M8 11l8-4M8 13l8 4" stroke="#6aa8d4" stroke-width="1.6"/></svg>
-      </button>
-      <button class="full" title="Volledig scherm" id="fsBtn">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="#6aa8d4" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-  </div>
+  <!-- fullscreen toggle (top-right) -->
+  <button id="fsBtn" title="Volledig scherm">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
 
   <!-- rotate-to-landscape prompt (mobile portrait) -->
   <div id="rotate">
     <div class="phone">📱</div>
     <p>Draai je telefoon horizontaal om te spelen</p>
+  </div>
+
+  <!-- iOS: how to go truly fullscreen -->
+  <div class="overlay hidden" id="fsTip">
+    <div class="card">
+      <h1 style="font-size:34px">Volledig scherm</h1>
+      <div class="rules">
+        Op de iPhone kan Safari z'n balk niet zelf verbergen. Voor échte
+        fullscreen:<br><br>
+        1️⃣ Tik onderin op het <b>deel-icoon</b> &#x2191;<br>
+        2️⃣ Kies <b>"Zet op beginscherm"</b><br>
+        3️⃣ Open <b>Fishy</b> vanaf je beginscherm — geen balk meer! 🎉
+      </div>
+      <button class="btn" id="fsTipClose">Oké</button>
+    </div>
   </div>
 
   <!-- start -->
@@ -207,7 +180,7 @@ const ctx = canvas.getContext("2d");
 const frame = document.getElementById("frame");
 
 let W = 0, H = 0, DPR = 1;
-const BAR_H = 64;                 // bottom bar height (play area sits above it)
+const BAR_H = 0;                  // no decorative bar — full-height play area
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = frame.clientWidth; H = frame.clientHeight;
@@ -217,6 +190,8 @@ function resize() {
   buildDecor();
 }
 window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
 
 // ---------- Input ----------
 // Finger-drag steering for mobile. The fish swims toward where your finger is.
@@ -726,9 +701,27 @@ function updateHUD(){
 
 document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("againBtn").addEventListener("click", startGame);
-document.getElementById("fsBtn").addEventListener("click", ()=>{
-  if(!document.fullscreenElement) frame.requestFullscreen?.(); else document.exitFullscreen?.();
+// ---------- Fullscreen ----------
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = window.navigator.standalone === true ||
+                     window.matchMedia("(display-mode: fullscreen)").matches ||
+                     window.matchMedia("(display-mode: standalone)").matches;
+const fsTip = document.getElementById("fsTip");
+const fsBtn = document.getElementById("fsBtn");
+if (isStandalone) fsBtn.style.display = "none";        // already fullscreen as installed app
+fsBtn.addEventListener("click", () => {
+  const el = document.documentElement;
+  if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+  if (el.requestFullscreen) {
+    el.requestFullscreen().then(() => {
+      try { screen.orientation.lock("landscape"); } catch(e) {}
+    }).catch(() => {});
+  } else if (isIOS) {
+    fsTip.classList.remove("hidden");                  // Safari can't do real FS → show A2HS tip
+  }
 });
+document.getElementById("fsTipClose").addEventListener("click", () => fsTip.classList.add("hidden"));
 
 // =====================================================================
 //  Main loop
